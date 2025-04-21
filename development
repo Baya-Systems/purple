@@ -1,0 +1,46 @@
+#
+# Purple Development
+# ---------------------------
+#
+# Purple requires a very up-to-date python.
+# Development uses python-3.12.
+#
+# Not too up-to-date!
+# Probably broken in 3.14 because of changes in type annotation parsing
+#
+# Default development machine is the off-the-shelf python:3.12 Docker image.
+#
+# For testing, Makefile will create a virtual python environment (venv) and
+# install the under-test version of Purple in it.
+# This is not necessary when using a Docker image, but allows clean testing
+# on any python-3.12 machine.
+#
+
+echo ${PURPLE:=$HOME/Code/purple}
+echo ${DOCKER_IMAGE:=python:3.12}
+
+cd $PURPLE
+
+vmake() {
+    make STDOUT=stdout $*
+}
+rmake() {
+    make KEEP_GOING=1 $*
+}
+
+
+DKR_PURPLE=/home/purple
+DKR_RUN="docker run --rm -it -v $PURPLE:$DKR_PURPLE -w $DKR_PURPLE $DOCKER_IMAGE"
+
+dmake() {
+    $DKR_RUN make $*
+}
+dvmake() {
+    $DKR_RUN make STDOUT=stdout $*
+}
+drmake() {
+    $DKR_RUN make KEEP_GOING=1 $*
+}
+dbash() {
+    $DKR_RUN bash
+}

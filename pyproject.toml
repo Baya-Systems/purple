@@ -1,0 +1,29 @@
+[project]
+name = "purple"
+description = "hardware architecture simulation language"
+license = "MIT"
+readme = "readme.md"
+
+dynamic = ["version"]
+license-files = ["licence.txt"]
+authors = [
+    {name = "James Aldis", email = "james.aldis@baysystems.com"},
+]
+maintainers = [
+    {name = "James Aldis", email = "james.aldis@baysystems.com"}
+]
+requires-python = ">= 3.11, < 3.14"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/purple/__about__.py"
+
+[project.urls]
+homepage = "TBD"
+source = "TBD"
+documentation = "TBD"
+issues = "TBD"
