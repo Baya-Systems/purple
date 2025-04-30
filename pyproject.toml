@@ -1,8 +1,8 @@
 [project]
 name = "purple"
-description = "hardware architecture simulation language"
+description = "Hardware architecture simulation language"
 license = "MIT"
-readme = "readme.md"
+readme = "README.md"
 
 dynamic = ["version"]
 license-files = ["licence.txt"]
@@ -23,7 +23,7 @@ build-backend = "hatchling.build"
 path = "src/purple/__about__.py"
 
 [project.urls]
-homepage = "TBD"
-source = "TBD"
-documentation = "TBD"
-issues = "TBD"
+homepage = "https://github.com/Baya-Systems/purple"
+source = "https://github.com/Baya-Systems/purple"
+documentation = "TBD" # TODO: https://about.readthedocs.com/
+issues = "https://github.com/Baya-Systems/purple/issues"

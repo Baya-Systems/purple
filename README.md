@@ -1,7 +1,6 @@
 <!--- MIT Licence: Copyright (c) 2025 Baya Systems <https://bayasystems.com> -->
 
-Purple
------------------
+# Purple
 
 A simulation framework for Python(R) inspired by memory of Intel's internal "Rainbow" project
 
@@ -39,9 +38,7 @@ It has the following goals:
 * (future) ability to co-simulate a Purple system with Verilog using DPI
 * pure-Python implementation and all user code is standard Python
 
-
-Approach
-==============
+## Approach
 
 Purple uses the type-hinting syntax of Python to declare component state variables, port bindings and
 other things.
@@ -51,9 +48,7 @@ of type hinting.
 There are other widely-accepted Python projects which similarly use type hinting for functional reasons,
 for example *attrs*, but probably less aggressively than Purple.
 
-
-Status
-==============
+## Status
 
 Implementation is complete enough for many projects.
 Tests exist for the vast majority of implemented features.
@@ -73,9 +68,7 @@ Main weaknesses of the current version are:
 * user documentation, although the tests may provide insight into how to use features
 * contributor documentation
 
-
-Installation
-==============
+## Installation
 
 Purple is pure-python and has no dependencies.
 
