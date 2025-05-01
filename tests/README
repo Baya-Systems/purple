@@ -1,0 +1,13 @@
+# Pytest Tests
+
+This folder holds tests orchestrated with `tox` and `pytest`.
+
+It is hoped that all the tst/ tests can be migrated to this style.
+
+## Running Tests
+
+```bash
+tox run -e test
+```
+
+This will run all tests in the `tests` folder using Python 3.12.
