@@ -69,13 +69,13 @@ Summary of Purple Concepts
 
 * *Port* and *Interface*
 
-  * a port is a generic Purple *model*
+  * a port is a generic Purple *Model*
   * it has a type, which can be a *Record* or *Union* or *Leaf*
   * ports form the external interfaces (along with rules) of the model in which they are declared
   * a port can be bound to another port (typically in another model) or to a handler method
     (typically in the same model)
   * when a model declares a state element that is a model, it may also declare bindings for that model's ports
-  * an *interface* is a Purple *model* designed to be a base class for a group of ports commonly
+  * an *Interface* is a Purple *Model* designed to be a base class for a group of ports commonly
     instantiated together with common parameters and bindings (for example the 5 channels of the AXI protocol)
 
 * *Rule*

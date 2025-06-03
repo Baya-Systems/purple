@@ -42,6 +42,13 @@ FIXME
         def on_clk_edge(self, index: Integer[5], trigger: ExternalInput[Boolean]):
             if trigger: etc
         so this would explode to 5 rules not 10
+    or is it better to make that the default and duplicate-rule the special case?
+        def on_clk_edge(self, index: ReplicateRule[Integer[5]], trigger: Boolean):
+            if trigger: etc
+    or use a decorator
+        @ReplicateRule(index = Integer[5])
+        def on_clk_edge(self, trigger: Boolean):
+            if trigger: etc
 
 cleanup
     documentation
@@ -74,13 +81,32 @@ tests todo
     parameterised model and record including partial-specialisation
     shallow and deep copy of static-records to/from transient-records
 
+support for atomic-rule specifications co-simulating with RTL as a scoreboard
+    issue is that RTL micro-architecture may affect visible behaviour at boundary of device under test
+    for example, if the RTL gets 2 input messages in the same clock cycle and the DUT contains an
+        arbiter, then one of them will go before the other; the order may be encoded in an output if for
+        example a storage buffer is assigned to each after arbitration
+    there is no problem modelling this using Purple atomic-rules; 2 rules are invocable and either order
+        is legal, leading to different system states
+    desire is to use the Purple model as a reference for an RTL implementation, so for example
+        the DUT-RTL is simulated (or analysed)
+        inputs to the DUT-RTL are also applied to the Purple model
+        outputs from the DUT-RTL are compared with outputs from the Purple model to see if they are legal
+    legal: there exists at least one order of atomic-rule invocation which produces the RTL outputs
+    so we want a Purple simulator able to search exhaustively for atomic-rule sequences that match some
+        defined outputs
+    probably each time there is an output it only needs to search till it finds one legal sequence,
+        but remember all illegal ones so those don't need to be tested again
+        and every RTL input should correspond to a (parameterised) rule invocation
+        some inputs may have undefined order (eg if from different physical interfaces) and some well-defined
+
 need to decide on immediate-visibility in clocked rules
     at the moment I am in favour of immediate visibility, because of a bad experience with
     passing a static-record by reference through a port
     also seems very strange to allow multiple in-place updates if the code cannot see the
     previous updates
     note that updates to the same leaf from different clocked rules at the same cycle
-    should never be allowed, because determinism in the general case is really hard
+        should never be allowed, because determinism in the general case is really hard
         (eg one rule does x /= 2 and another rule does x += 1)
     this simplifies bitvector
 

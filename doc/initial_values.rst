@@ -77,6 +77,7 @@ to sub-state of a record or model state attribute.
         # note that this modification only applies to Hierarchical_Example.e2
         # note that this is not possible for *Model* attributes, because creating a model instance
         #     causes elaboration of a new system
+        #     however, using dict(a = False, b = False) would work for a model
         e2: Example = Example(a = False, b = False)
 
 
