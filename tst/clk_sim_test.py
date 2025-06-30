@@ -15,15 +15,20 @@ FIXME
     debug on exception
 '''
 
-from purple import Integer, Model, Clock, ClockedSimulator
+from purple import Integer, Model, Record, Clock, ClockedSimulator
+
+
+class Record_SubComp(Record):
+    a: Integer[...] = 5
 
 
 class ClockedSubModule(Model):
+    x: Record_SubComp
     counter_a: Integer[...] = 0
     counter_b: Integer[...] = 0
 
     def increment_a(self):
-            self.counter_a = self.counter_a + 1
+        self.counter_a = self.counter_a + 1
 
     clk_a: Clock[increment_a]
     clk_b: Clock[increment_b]

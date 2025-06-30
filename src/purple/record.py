@@ -114,6 +114,7 @@ class Record(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMet
         instance._dp_raw_setattr('name', (*hierarchical_name, name))
         instance._dp_raw_setattr('_dp_top_component', top_component)
         instance._dp_raw_setattr('_dp_union_instances', dict())
+        instance._dp_raw_setattr('_dp_clocks', dict())
         return instance._dp_elaborate_substate(initial_value_dict)
 
     @classmethod

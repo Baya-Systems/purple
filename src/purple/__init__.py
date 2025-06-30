@@ -32,6 +32,8 @@ FIXME
             b: SomeType
             end_of_elaboration: make_b
             def make_b(self): self.b = blah
+    bug: UniqueObject as explicit initialisation value crashes
+        eg in Registered-Output-Port without second parameter
     invariants
     coverage definition methods
     array with enum keys
@@ -49,6 +51,8 @@ FIXME
         @ReplicateRule(index = Integer[5])
         def on_clk_edge(self, trigger: Boolean):
             if trigger: etc
+    does interface generalise to using registered-output port and initial values?
+    add randomisation capability to records and leaves (don't create all values till first call)
 
 cleanup
     documentation
@@ -73,6 +77,7 @@ cleanup
     replace star-import with named set of things
     support copying records from superclasses and subclasses?
     force port payload type to be a record or a leaf
+    can ArrayIndex be mutable, so just used as an initial value but then changes (eg for initialising a linked-list)?
 
 tests todo
     model (more tests)
@@ -99,6 +104,16 @@ support for atomic-rule specifications co-simulating with RTL as a scoreboard
         but remember all illegal ones so those don't need to be tested again
         and every RTL input should correspond to a (parameterised) rule invocation
         some inputs may have undefined order (eg if from different physical interfaces) and some well-defined
+    how does it report "no rule sequence found"?
+        up to some impossible observation there are potentially many legal sequences
+        so there may be multiple legal versions of that observation
+        or there may be no legal version of that observation (something else should have happened first)
+    this is interesting and difficult to predict the complexity and performance
+        build a simple example eg an arbiter
+
+support for atomic-rule specifications co-simulating with RTL as stimulus
+    so rules are chosen (maybe randomly) and this is auto-translated to RTL waves?
+    not sure how this would work
 
 need to decide on immediate-visibility in clocked rules
     at the moment I am in favour of immediate visibility, because of a bad experience with

@@ -165,6 +165,10 @@ class Binding:
         assert self.lhs.name[0] != '_' and self.rhs.name[0] != '_'
         return self
 
+    def __str__(self):
+        lhs = '.'.join(self.lhs.name)
+        rhs = '.'.join([self.rhs.__name__] if inspect.isfunction(self.rhs) else self.rhs.name)
+        return f'{lhs.rjust(30)} {">>" if self.left2right else "<<"} {rhs}'
 
 class AnnotationDict(dict):
     'triggers binding resolution when annotations are added to the class'
