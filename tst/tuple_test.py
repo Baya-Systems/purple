@@ -50,6 +50,7 @@ class Entry(FrozenRecord):
 
 class Top1(cli.Test.Top):
     tt: Tuple[Entry]
+    ii: Tuple[Integer[10]]
     x: Integer[10]
 
 def the_test(top, entry_cls, msg):
@@ -59,12 +60,24 @@ def the_test(top, entry_cls, msg):
     assert len(top.tt) == 0
     yield
 
+    assert len(top.ii) == 0
+    yield
+
     top.tt = (entry_cls(a = 0), entry_cls(b = 2))
     yield
 
     assert len(top.tt) == 2
     assert top.tt[0].a == 0
     assert top.tt[1].b == 2
+    yield
+
+    top.ii = (3, 4, 5)
+    yield
+
+    assert len(top.ii) == 3
+    assert top.ii[0] == 3
+    assert top.ii[1] == 4
+    assert top.ii[2] == 5
     yield
 
     top.tt = (entry_cls(a = 0, b = 1, c = i) for i in range(6))
@@ -83,6 +96,12 @@ def the_test(top, entry_cls, msg):
     assert top.tt[2] == entry_cls(a = 0, b = 1, c = 3)
     assert top.tt[3] == entry_cls(a = 0, b = 1, c = 4)
     assert top.tt[4] == entry_cls(a = 0, b = 1, c = 5)
+    yield
+
+    assert top.ii.pop(1) == 4
+    yield
+
+    assert len(top.ii) == 2
     yield
 
     assert top.tt.pop(0) == entry_cls(a = 0, b = 1, c = 0)
@@ -143,6 +162,7 @@ class Entry2(Record):
 
 class Top2(cli.Test.Top):
     tt: Tuple[Entry2]
+    ii: Tuple[Integer[10]]
     x: Integer[10]
 
 cli.Test(Top2(), Entry2, 'liquid-entry')(the_test)

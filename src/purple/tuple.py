@@ -15,10 +15,6 @@ May be slow in simulation if the number of elements is large
 Never UnDefined but defaults to empty
 
 Can be put in a (transient) Record
-Can't stop it; is it frozen?
-
-FIXME:
-    do not need _dp_get_current_leaf_value as we are aiming for immediate-visible
 '''
 
 from . import common, parameterise, record, leaf
@@ -31,36 +27,31 @@ class TupleObject(tuple):
         self.name = name
         return self
 
-    def tuple_to_modify(self):
-        return self.owner._dp_get_current_leaf_value(self.name)
-
     def pop(self, index = 0):
-        to_modify = self.tuple_to_modify()
-        setattr(self.owner, self.name, (*to_modify[:index], *to_modify[index+1:]))
-        return to_modify[index]
+        setattr(self.owner, self.name, (*self[:index], *self[index+1:]))
+        return self[index]
 
     def replace(self, index, value):
-        to_modify = self.tuple_to_modify()
-        setattr(self.owner, self.name, (*to_modify[:index], value, *to_modify[index+1:]))
-        return to_modify[index]
+        setattr(self.owner, self.name, (*self[:index], value, *self[index+1:]))
+        return self[index]
 
     def insert(self, index, value):
-        to_modify = self.tuple_to_modify()
-        setattr(self.owner, self.name, (*to_modify[:index], value, *to_modify[index:]))
+        setattr(self.owner, self.name, (*self[:index], value, *self[index:]))
 
     def append(self, value):
-        to_modify = self.tuple_to_modify()
-        setattr(self.owner, self.name, (*to_modify, value))
+        setattr(self.owner, self.name, (*self, value))
 
 
 @parameterise.Generic
 def Tuple(entry_cls):
-    frozen_entry_cls = record.FrozenRecord.make_class(entry_cls)
+#    frozen_entry_cls = record.FrozenRecord.make_class(entry_cls)
+    frozen_entry_cls = entry_cls._dp_make_frozen_class()
 
     class TupleLeafState:
         _dp_class_cache_key = frozen_entry_cls
         param_entry_cls = frozen_entry_cls
         freeze_new_entries = (frozen_entry_cls is not entry_cls)
+        entry_cls_is_leaf = issubclass(frozen_entry_cls, leaf.Leaf)
 
         @classmethod
         def _dp_check_and_cast_including_undef(cls, owner, name, value, allow_unsel = True):
@@ -75,7 +66,10 @@ def Tuple(entry_cls):
                     v_frozen = value
                 v_checked = []
                 for v in v_frozen:
-                    assert isinstance(v, cls.param_entry_cls)
+                    if cls.entry_cls_is_leaf:
+                        v = cls.param_entry_cls._dp_check_and_cast_including_undef(owner, name, v)
+                    else:
+                        assert isinstance(v, cls.param_entry_cls)
                     v_checked.append(v)
                 return TupleObject(owner, name, v_checked)
 

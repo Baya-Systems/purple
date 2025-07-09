@@ -82,6 +82,10 @@ class Record(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMet
         return frozen_class._dp_transient_deep_copy(self)
 
     @classmethod
+    def _dp_make_frozen_class(cls):
+        return FrozenRecord.make_class(cls)
+
+    @classmethod
     def _dp_transient_deep_copy(cls, self):
         return cls(**{
             k:c._dp_transient_deep_copy(self._dp_raw_getattr(k))

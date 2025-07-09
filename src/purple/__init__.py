@@ -51,8 +51,14 @@ FIXME
         @ReplicateRule(index = Integer[5])
         def on_clk_edge(self, trigger: Boolean):
             if trigger: etc
-    does interface generalise to using registered-output port and initial values?
-    add randomisation capability to records and leaves (don't create all values till first call)
+    does Interface generalise to using registered-output port and initial values?
+    add randomisation capability to records and leaves
+        don't create all values till first call, or require a randomiser object to be created
+    when you get a clocked-rule name wrong in Clock[rule_name] you get a very confusing error
+    bug: can't have Tuple of Leaf
+        this is temporarily hacked to work, but
+        coding style is bad - test for leaf in Tuple
+        no protection agains transient BitVector being in-place modifiable (so non-undoable state change)
 
 cleanup
     documentation
@@ -108,12 +114,17 @@ support for atomic-rule specifications co-simulating with RTL as a scoreboard
         up to some impossible observation there are potentially many legal sequences
         so there may be multiple legal versions of that observation
         or there may be no legal version of that observation (something else should have happened first)
+        all it can say is "cannot reproduce DUT outputs x,y,z"
+        but a more conventional scoreboard would say "output x is wrong, predicted xx"
+        1) something came out of spec but not exact match.  give a list of
+           legal options (ordered by hamming distance)
+        2) something similar can out of a different interface eg address lookup error (is this the same as 1, given that nothing is predicted at that place so it will be a mismatch?)
+        3) nothing came out anywhere
+           have to run to deadlock for this to be a conclusion so this seems OK
+    is causality an input or unimportant (ie, is it illegal behaviour for an
+        output to happen before some input)?
     this is interesting and difficult to predict the complexity and performance
         build a simple example eg an arbiter
-
-support for atomic-rule specifications co-simulating with RTL as stimulus
-    so rules are chosen (maybe randomly) and this is auto-translated to RTL waves?
-    not sure how this would work
 
 need to decide on immediate-visibility in clocked rules
     at the moment I am in favour of immediate visibility, because of a bad experience with
@@ -140,6 +151,8 @@ could this go full-bs?
             so that it can be abandoned if atomicity was violated during run
             can you pipeline, so multiple instances of the same rule
                 read all at the start?
+
+could add a VCD generation, but probably only useful for clocked
 
 are greek characters just a distraction?
     πψτηον

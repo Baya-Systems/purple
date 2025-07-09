@@ -83,3 +83,8 @@ class Leaf(common.PurpleComponent, metaclass = metaclass.PurpleLeafMetaClass):
     @classmethod
     def subclass(cls, cls_name, vars_cls, *other_bases):
         return type(cls)(cls_name, (cls, *other_bases), vars(vars_cls).copy())
+
+    @classmethod
+    def _dp_make_frozen_class(cls):
+        # leaf classes do not always produce immutable objects, if instantiated as transients
+        return cls
