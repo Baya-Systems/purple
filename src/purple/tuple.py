@@ -44,7 +44,6 @@ class TupleObject(tuple):
 
 @parameterise.Generic
 def Tuple(entry_cls):
-#    frozen_entry_cls = record.FrozenRecord.make_class(entry_cls)
     frozen_entry_cls = entry_cls._dp_make_frozen_class()
 
     class TupleLeafState:

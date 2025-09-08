@@ -94,7 +94,7 @@ class Invocation:
         try:
             assert a == b
         except common.ReadUnDefined:
-            assert a._rbw_eq__(b)
+            assert a._dp_eq__(b)
 
     def revert_state(self):
         for (cn, leaf_name), change in self.state_changes.items():

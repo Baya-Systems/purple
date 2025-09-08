@@ -291,7 +291,7 @@ class EmulatedIntegerBase:
     def __invert__(self, op = operator.inv):
         return self.int_unary_op(op)
 
-    # binary operators returning something other than a transient emulated-integer object
+    # unary operators returning something other than a transient emulated-integer object
     def __hash__(self):
         return self.value.__hash__()
 

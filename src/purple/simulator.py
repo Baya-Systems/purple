@@ -145,6 +145,23 @@ class ClockedSimulator(SimulatorBase):
                 if self.fastest_clock is None or period_ps < self.fastest_clock.period_ps:
                     self.fastest_clock = clock
 
+    def sim_end_time(self, duration_ps = None, cycles = None, cycles_of_fastest_clock = None):
+        if duration_ps is None:
+            if cycles is None:
+                duration_ps = int((0.5 + cycles_of_fastest_clock) * self.fastest_clock.period_ps)
+            else:
+                duration_ps = int((0.5 + cycles) * self.clocks[0].period_ps)
+        return self.time_ps + duration_ps
+
+    def run_one_step(self, final_time_ps, show_print, print_headers):
+        while True:
+            clock = min(self.clocks)
+            if clock.next_event_time_ps >= final_time_ps:
+                break
+            self.time_ps = clock.next_event_time_ps
+            clock.event(show_print, print_headers)
+            yield
+
     def run(self,
         duration_ps = None,
         cycles = None,
@@ -152,17 +169,6 @@ class ClockedSimulator(SimulatorBase):
         show_print = True,
         print_headers = True,
     ):
-        if duration_ps is None:
-            if cycles is None:
-                duration_ps = int((0.5 + cycles_of_fastest_clock) * self.fastest_clock.period_ps)
-            else:
-                duration_ps = int((0.5 + cycles) * self.clocks[0].period_ps)
-
-        final_time_ps = self.time_ps + duration_ps
-
-        while True:
-            clock = min(self.clocks)
-            if clock.next_event_time_ps >= final_time_ps:
-                break
-            self.time_ps = clock.next_event_time_ps
-            clock.event(show_print, print_headers)
+        final_time_ps = self.sim_end_time(duration_ps, cycles, cycles_of_fastest_clock)
+        for step in self.run_one_step(final_time_ps, show_print, print_headers):
+            pass

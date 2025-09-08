@@ -26,7 +26,19 @@ rules for defined width
 
 FIXME:
     FieldLocation should contain the implementations of __getitem__ and __setitem__
-    for all bit-vector object types; then user can add others
+        for all bit-vector object types; then user can add others
+        maybe define a __dp_bivector_getitem__
+    Widthed bitvectors should have a concatenation operator or method
+        return a transient (widthed if other also widthed?
+        allow any integer type in the MSBs? (LSBs must know their own width)
+        should LSBs be first LHS (logical) or RHS (visual)?
+            could use matmul operator           a @ b
+            offer a method                      a.extend_with(b)
+            transient __init__ special case     BitVectorTransient[Width](a, b)
+            transient __init__ hidden case      {a, b} or (a, b)
+                set() matches verilog, but is unfortunately not ordered
+                anyway, this doesn't work till assigned to a state element with known type
+            a function                          Concatenate(a, b)
 '''
 
 from . import parameterise, leaf, state
