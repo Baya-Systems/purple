@@ -63,13 +63,22 @@ FIXME
         coding style is bad - test for leaf in Tuple
         no protection against transient BitVector being in-place modifiable (so non-undoable state change)
     configurable models
-        how to have an array of non-identical things (eg buffers of different message types)
-        might not be an array, but still ought to be possible without code-in-declaration
+        how to have an array of non-identical things (eg buffers of different message types or different lengths)
+        might not be an "Array", but still ought to be possible without code-in-declaration
             ie still syntactic sugar for naming of sub-components
-        use of an array means not possible to use generic-Model with different parameters
-    does array-index work in a Tuple?  almost certainly not
-    array-index variant allowing modification after elab (only sets initial value)
-    tuple of Record can't be initialised from an iterable of dict
+            use of an array means not possible to use generic-Model with different parameters
+        how do you specify the structure?
+            configuration object, eg a transient Record but can a Record contain type references?
+            what limitations on configuration make it possible to do something better than a subclass?
+            eg same basic generic type but different parameters
+    can I have a Tuple of Union?
+    array-index variant allowing modification after elab
+        only sets initial value
+        question is: what are the limits on modifications?
+        class X(Record):
+            a: Integer[0,100] = ArrayIndexInitialiser
+            b: ArrayIndex
+            c: MutableArrayIndex[Integer[0,100]]
 
 cleanup
     documentation
