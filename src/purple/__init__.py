@@ -44,21 +44,32 @@ FIXME
         def on_clk_edge(self, index: Integer[5], trigger: ExternalInput[Boolean]):
             if trigger: etc
         so this would explode to 5 rules not 10
-    or is it better to make that the default and duplicate-rule the special case?
-        def on_clk_edge(self, index: ReplicateRule[Integer[5]], trigger: Boolean):
-            if trigger: etc
-    or use a decorator
-        @ReplicateRule(index = Integer[5])
-        def on_clk_edge(self, trigger: Boolean):
-            if trigger: etc
+        or is it better to make that the default and duplicate-rule the special case?
+            def on_clk_edge(self, index: ReplicateRule[Integer[5]], trigger: Boolean):
+                if trigger: etc
+        or use a decorator
+            @ReplicateRule(index = Integer[5])
+            def on_clk_edge(self, trigger: Boolean):
+                if trigger: etc
+        preference: require user to write a loop if they want a loop; all
+            parameters represent external-input or specification-dont-care
     does Interface generalise to using registered-output port and initial values?
     add randomisation capability to records and leaves
+        select among all-possible-values, or create on-the-fly?
         don't create all values till first call, or require a randomiser object to be created
     when you get a clocked-rule name wrong in Clock[rule_name] you get a very confusing error
     bug: can't have Tuple of Leaf
         this is temporarily hacked to work, but
         coding style is bad - test for leaf in Tuple
-        no protection agains transient BitVector being in-place modifiable (so non-undoable state change)
+        no protection against transient BitVector being in-place modifiable (so non-undoable state change)
+    configurable models
+        how to have an array of non-identical things (eg buffers of different message types)
+        might not be an array, but still ought to be possible without code-in-declaration
+            ie still syntactic sugar for naming of sub-components
+        use of an array means not possible to use generic-Model with different parameters
+    does array-index work in a Tuple?  almost certainly not
+    array-index variant allowing modification after elab (only sets initial value)
+    tuple of Record can't be initialised from an iterable of dict
 
 cleanup
     documentation

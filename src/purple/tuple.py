@@ -17,7 +17,7 @@ Never UnDefined but defaults to empty
 Can be put in a (transient) Record
 '''
 
-from . import common, parameterise, record, leaf
+from . import common, parameterise, record, leaf, array
 
 
 class TupleObject(tuple):
@@ -48,29 +48,35 @@ def Tuple(entry_cls):
 
     class TupleLeafState:
         _dp_class_cache_key = frozen_entry_cls
-        param_entry_cls = frozen_entry_cls
-        freeze_new_entries = (frozen_entry_cls is not entry_cls)
+        param_entry_cls = entry_cls
+        param_frozen_entry_cls = frozen_entry_cls
         entry_cls_is_leaf = issubclass(frozen_entry_cls, leaf.Leaf)
 
         @classmethod
         def _dp_check_and_cast_including_undef(cls, owner, name, value, allow_unsel = True):
             if value is common.UnSelected and allow_unsel:
                 return value
-            else:
-                if value is common.UnDefined:
-                    v_frozen = ()
-                elif cls.freeze_new_entries:
-                    v_frozen =  [v.freeze() for v in value]
+
+            value = () if value is common.UnDefined else value
+            fixed_value = []
+            for v in value:
+                if cls.entry_cls_is_leaf:
+                    v_fixed = cls.param_entry_cls._dp_check_and_cast_including_undef(owner, name, v)
+                elif isinstance(v, cls.param_frozen_entry_cls):
+                    v_fixed = v
+                elif isinstance(v, cls.param_entry_cls):
+                    v_fixed = v.freeze()
                 else:
-                    v_frozen = value
-                v_checked = []
-                for v in v_frozen:
-                    if cls.entry_cls_is_leaf:
-                        v = cls.param_entry_cls._dp_check_and_cast_including_undef(owner, name, v)
+                    # try to build a frozen value from whatever we have been given
+                    # will fail if not a dict and the entry-class is not able to accept it
+                    if isinstance(v, dict):
+                        v_fixed = cls.param_frozen_entry_cls(**v)
                     else:
-                        assert isinstance(v, cls.param_entry_cls)
-                    v_checked.append(v)
-                return TupleObject(owner, name, v_checked)
+                        v_fixed = cls.param_frozen_entry_cls(v)
+
+                fixed_value.append(v_fixed)
+
+            return TupleObject(owner, name, fixed_value)
 
     cls_name = f'Tuple_{entry_cls.__name__}'
     return leaf.Leaf.subclass(cls_name, TupleLeafState)
