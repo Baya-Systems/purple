@@ -163,13 +163,19 @@ def Registered_Output_Port(payload_type, initial_value = common.UniqueObject):
     # typically for clock-based designs
     port_base_class = Port[payload_type]
 
-    class Registered_Output_Port_FIXME(port_base_class):
-        current: payload_type = initial_value
-
+    class Base(port_base_class):
         def _dp_port_get_current(self):
             return self.current
 
         def _dp_port_set_current(self, value):
             self.current = value
+
+    # cannot pass UniqueObject explicitly; it is used by Metaclass to detect special cases
+    if initial_value is common.UniqueObject:
+        class Registered_Output_Port_FIXME(Base):
+            current: payload_type
+    else:
+        class Registered_Output_Port_FIXME(Base):
+            current: payload_type = initial_value
 
     return Registered_Output_Port_FIXME

@@ -32,8 +32,6 @@ FIXME
             b: SomeType
             end_of_elaboration: make_b
             def make_b(self): self.b = blah
-    bug: UniqueObject as explicit initialisation value crashes
-        eg in Registered-Output-Port without second parameter
     invariants
     coverage definition methods
     array with enum keys
@@ -71,6 +69,7 @@ FIXME
             configuration object, eg a transient Record but can a Record contain type references?
             what limitations on configuration make it possible to do something better than a subclass?
             eg same basic generic type but different parameters
+        can a (frozen) transient Record object be a parameter to Generic?
     can I have a Tuple of Union?
     array-index variant allowing modification after elab
         only sets initial value
@@ -82,6 +81,8 @@ FIXME
 
 cleanup
     documentation
+    move or copy all open issues/fixmes to documentation
+    some fixmes are out of date and have been fixed
     am I allowing partially-undef records to be compared for equality?  is it OK?
     search for all " if _dp_class_is_something " and try to replace with classmethods
         then define clearly what the expected classmethod behaviour is
