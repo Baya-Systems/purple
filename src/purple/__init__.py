@@ -25,8 +25,8 @@ lint is not fully clean and probably cannot be, but valuable
     ruff check tst --ignore F821 --ignore F811 --ignore E722
 
 FIXME
-    declaring a state type as Tuple not Tuple[XYZ] fails silently
     py3.14 breaks everything
+    declaring a state type as Tuple not Tuple[XYZ] fails silently
     start rules
         class X(Model):
             b: SomeType
@@ -51,6 +51,10 @@ FIXME
                 if trigger: etc
         preference: require user to write a loop if they want a loop; all
             parameters represent external-input or specification-dont-care
+            but looping over something with a guard does not work (ie guard should be same as continue)
+                for p in self.ports:
+                    with GuardContinues:
+                        p = self.get_next()
     does Interface generalise to using registered-output port and initial values?
     add randomisation capability to records and leaves
         select among all-possible-values, or create on-the-fly?
