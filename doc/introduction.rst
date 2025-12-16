@@ -86,8 +86,9 @@ Summary of Purple Concepts
     that the number of possible parameter combinations is finite
   * rules are either "clocked" or "atomic".
     Clocked rules may run at the same time as each other, where atomic rules run strictly sequentially
-  * the parameters of an atomic rule represent external inputs to the system
-  * the parameters of a clocked rule create multiple independent and concurrent rules
+  * the parameters of a rule represent external inputs to the system, or "don't-care" behaviour
+    in the system being modelled
+  * when a clocked rule has parameters, only one set of parameters is used in each clock cycle
   * a rule may only be invocable for a subset of the model state.
     If required, the rule embeds calculations of whether or not it is invocable.
 
@@ -127,6 +128,8 @@ Comments within the code highlight items of interest.
         count: Integer[100]
 
         # the listed methods are the ways that a Bomb can change state
+        # the model does not specify when the different events can occur: that is external stimulus
+        # a simulator can select rules to invoke, for example based on probabilities
         rules: [prime, countdown, cut_blue_wire, cut_red_wire]
 
         # 'prime' is a method with a parameter; this represents an external input
@@ -177,33 +180,32 @@ Comments within the code highlight items of interest.
         # there is a clock, named 'clk', which in this case drives one process rule called 'rising_edge_event'
         clk: Clock[rising_edge_event]
 
-        def rising_edge_event(self):
-            # in this example a single rule with an if statement is used instead of multiple rules with guards
-            # for systems with clocked rules, external stimulus does not come from rule parameters
-            # because all rules are invoked every clock cycle; in this example input is psuedo-random
+        def rising_edge_event(self, initial_count: Integer[20, 100], event: Enumeration[BombEvent]):
+            # in this example a single rule method with an if statement is used
+            # multiple rule methods with guards, one for each state, could be used but a single
+            #   rule makes it obvious what can happen in parallel in each clock cycle
+            # as for atomic rules, external stimulus comes from rule parameters
+            #   but only one version of each rule method (one set of parameters) is called each cycle
+            # the model does not specify when the different events can occur: that is external stimulus
+            # a simulator can select the rule parameters each cycle, for example based on probabilities
 
-            if self.state is BombState.Ready:
-                # immediate change to counting state in first clock cycle
-                self.count = random.randrange(20, 100)
+            if self.state is BombState.Ready and event is BombEvent.Prime:
+                # while in the Ready state, wait for a cycle when bomb is being primed and set the count
+                self.count = initial_count
                 self.state = BombState.Counting
 
             elif self.state is BombState.Counting:
-                # high probability that the system remains in counting state
-                if random.random() < 0.975:
+                if event is BombEvent.CutBlue:
+                    self.state = BombState.Safe
+                    self.print('phew')
+                elif event is BombEvent.CutRed:
+                    self.state = BombState.Exploded
+                    self.print('-----BADABOOM-----')
+                else:
                     self.count -= 1
                     if self.count == 0:
                         self.state = BombState.Exploded
                         self.print('-----BOOM-----')
-
-                # small probability that the bomb is correctly de-fused
-                elif random.random() < 0.5:
-                    self.state = BombState.Safe
-                    self.print('phew')
-
-                # residual probability that the bomb explodes because wrong wire cut
-                else:
-                    self.state = BombState.Exploded
-                    self.print('-----BADABOOM-----')
 
 
 Simple Example with Ports and Records

@@ -21,12 +21,15 @@ from . import rule
 
 
 class Clock:
-    def __init__(self, client_refs, rules = []):
+    def __init__(self, client_refs, rules = [], elaborated = False):
         self.client_refs = client_refs
-        self.rules = rules
         self.driven_by_another_clock = False
         self.next_event_time_ps = 0
         self.num_events = 0
+        self.rules = rules
+        if elaborated:
+            rule_methods = set(r.method for r in rules)
+            self.rules_by_method = {m.__name__:[r for r in rules if r.method is m] for m in rule_methods}
 
     def __class_getitem__(cls, client_refs):
         # called on declaration
@@ -68,16 +71,16 @@ class Clock:
 
             rules.extend(rule.construct_all(rule_owner, rule_name))
 
-        return type(self)(self.client_refs, rules)
+        return type(self)(self.client_refs, rules, elaborated = True)
 
     def set_period_ps(self, period_ps, phase_ps = 0):
         self.period_ps = period_ps
         self.next_event_time_ps += phase_ps
 
-    def event(self, show_print = True, print_headers = True):
+    def event(self, selected_rules, show_print = True, print_headers = True):
         '''clock event
 
-        invoke all bound rules
+        invoke all selected bound rules
             revert system state after each one so they are all concurrent
         re-apply all system state changes
         update next-event time of clock object
@@ -85,7 +88,7 @@ class Clock:
         assert not self.driven_by_another_clock
 
         successful = []
-        for r in self.rules:
+        for r in selected_rules:
             inv = r.invoke(check = True, print_headers = False, show_print = False)
             if not inv.guarded:
                 inv.revert_state()

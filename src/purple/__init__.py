@@ -4,27 +4,28 @@ MIT Licence: Copyright (c) 2025 Baya Systems <https://bayasystems.com>
 Purple implementation
 ======================
 
-done
-    metaclasses
-    hierarchy / model
-    record
-    union
-    port
-    parameterised classes
-    state (enum, integer, modulo, boolean, constant)
-    rule
-    array
-    tuple
-    bit-vector
-    clock
-    interface
-    simulator
-
 lint is not fully clean and probably cannot be, but valuable
     ruff check src --exclude __init__.py
     ruff check tst --ignore F821 --ignore F811 --ignore E722
 
 FIXME
+    clocked rules should have parameters that represent external input
+        def on_clk_edge(self, index: Integer[5]):
+            if trigger: etc
+        so this would explode to 1 rules not 5
+        require user to write a loop if they want a loop
+            parameters represent external-input or specification-dont-care
+            but looping over something with a guard does not work (ie guard should be same as continue)
+                for p in self.ports:
+                    with LocalGuards:
+                        p = self.get_next()
+                note that we will need to save the current state updates on entry, then add to them
+                    as usual, but revert to the previous if there is a guard exception
+        fix tests   DONE
+        fix bomb so it has external input and re-write the doc  DONE
+        add LocalGuards and test it
+        fix cbusy model in BayaArch
+
     py3.14 breaks everything
     declaring a state type as Tuple not Tuple[XYZ] fails silently
     start rules
@@ -38,23 +39,6 @@ FIXME
     save/restore
     ability to suppress a rule in subclass
     cosimulation with Verilog-DPI
-    clocked rules could have parameters that represent external input
-        def on_clk_edge(self, index: Integer[5], trigger: ExternalInput[Boolean]):
-            if trigger: etc
-        so this would explode to 5 rules not 10
-        or is it better to make that the default and duplicate-rule the special case?
-            def on_clk_edge(self, index: ReplicateRule[Integer[5]], trigger: Boolean):
-                if trigger: etc
-        or use a decorator
-            @ReplicateRule(index = Integer[5])
-            def on_clk_edge(self, trigger: Boolean):
-                if trigger: etc
-        preference: require user to write a loop if they want a loop; all
-            parameters represent external-input or specification-dont-care
-            but looping over something with a guard does not work (ie guard should be same as continue)
-                for p in self.ports:
-                    with GuardContinues:
-                        p = self.get_next()
     does Interface generalise to using registered-output port and initial values?
     add randomisation capability to records and leaves
         select among all-possible-values, or create on-the-fly?

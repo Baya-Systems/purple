@@ -134,7 +134,7 @@ class ClockedSimulator(SimulatorBase):
                     component = getattr(component, component_name[0])
 
             for clock in system.find_clock(component = component, name = clock_name):
-                self.clocks.append(clock)
+                self.clocks.append((clock, clock_name))
                 frequency_GHz = clock_params.get('frequency_GHz', None)
                 if frequency_GHz is None:
                     period_ps = clock_params['period_ps']
@@ -150,16 +150,21 @@ class ClockedSimulator(SimulatorBase):
             if cycles is None:
                 duration_ps = int((0.5 + cycles_of_fastest_clock) * self.fastest_clock.period_ps)
             else:
-                duration_ps = int((0.5 + cycles) * self.clocks[0].period_ps)
+                duration_ps = int((0.5 + cycles) * self.clocks[0][0].period_ps)
         return self.time_ps + duration_ps
+
+    def select_rules(self, clock, clock_name):
+        'prior to clock event, select maximum one rule for each method'
+        return [rules[0] for rules in clock.rules_by_method.values()]
 
     def run_one_step(self, final_time_ps, show_print, print_headers):
         while True:
-            clock = min(self.clocks)
+            clock, clock_name = min(self.clocks)
             if clock.next_event_time_ps >= final_time_ps:
                 break
             self.time_ps = clock.next_event_time_ps
-            clock.event(show_print, print_headers)
+            selected_rules = self.select_rules(clock, clock_name)
+            clock.event(selected_rules, show_print, print_headers)
             yield
 
     def run(self,

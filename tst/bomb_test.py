@@ -13,6 +13,7 @@ import random
 
 
 BombState = enum.Enum('BombState', 'Ready Counting Exploded Safe')
+BombEvent = enum.Enum('BombEvent', 'Prime CutBlue CutRed Hesitate')
 
 
 class Bomb(Model):
@@ -70,6 +71,7 @@ for _ in range(20):
             countdown_expired = True
     else:
         assert False, 'unexpected end state'
+
 assert defused and triggered
 assert countdown_expired
 
@@ -80,26 +82,55 @@ class ClockedBomb(Model):
 
     clk: Clock[rising_edge_event]
 
-    def rising_edge_event(self):
-        if self.state is BombState.Ready:
-            self.count = random.randrange(20, 100)
+    def rising_edge_event(self, initial_count: Integer[20, 100], event: Enumeration[BombEvent]):
+        if self.state is BombState.Ready and event is BombEvent.Prime:
+            self.count = initial_count
             self.state = BombState.Counting
 
         elif self.state is BombState.Counting:
-            if random.random() < 0.975:
+            if event is BombEvent.CutBlue:
+                self.state = BombState.Safe
+                self.print('phew')
+            elif event is BombEvent.CutRed:
+                self.state = BombState.Exploded
+                self.print('-----BADABOOM-----')
+            else:
                 self.count -= 1
                 if self.count == 0:
                     self.state = BombState.Exploded
                     self.print('-----BOOM-----')
 
+
+class Cim(ClockedSimulator):
+    def __init__(self, system, clock_input):
+        super().__init__(system, clock_input)
+        assert len(self.clocks) == 1
+        clk, clk_name = self.clocks[0]
+        assert len(clk.rules_by_method) == 1
+        rules = next(iter(clk.rules_by_method.values()))
+        self.prime_rules = [r for r in rules if r.params['event'] is BombEvent.Prime]
+        self.red_rules = [r for r in rules if r.params['event'] is BombEvent.CutRed]
+        self.blue_rules = [r for r in rules if r.params['event'] is BombEvent.CutBlue]
+        self.count_rules = [r for r in rules if r.params['event'] is BombEvent.Hesitate]
+        self.primed = False
+
+    def select_rules(self, clock, clock_name):
+        '''prior to clock event, select maximum one rule for each method
+
+        in this case there's only one method so just choose one rule at random
+        which represents the input stimulus to the model
+        respect the interface protocol: only prime it once
+        '''
+        if self.primed:
+            if random.random() < 0.975:
+                return [random.choice(self.count_rules)]
             elif random.random() < 0.5:
-                self.state = BombState.Safe
-                self.print('phew')
-
+                return [random.choice(self.blue_rules)]
             else:
-                self.state = BombState.Exploded
-                self.print('-----BADABOOM-----')
-
+                return [random.choice(self.red_rules)]
+        else:
+            self.primed = True
+            return [random.choice(self.prime_rules)]
 
 print()
 print('clocked bomb')
@@ -109,7 +140,7 @@ defused = False
 triggered = False
 for _ in range(20):
     system = ClockedBomb('bomb')
-    sim = ClockedSimulator(system, dict(frequency_GHz = 1.0, name = 'clk'))
+    sim = Cim(system, dict(frequency_GHz = 1.0, name = 'clk'))
     while True:
         sim.run(cycles = 200)
         if system.state is not BombState.Counting:
@@ -123,5 +154,6 @@ for _ in range(20):
             countdown_expired = True
     else:
         assert False, 'unexpected end state'
+
 assert defused and triggered
 assert countdown_expired

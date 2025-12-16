@@ -67,7 +67,7 @@ for x in range(60):
     assert expected == witnessed, f'top: expected {expected} but got {witnessed}'
     witnessed = system.sub.counter_a
     assert expected == witnessed, f'sub: expected {expected} but got {witnessed}'
-    clk.event()
+    clk.event(clk.rules)
 assert clk.next_event_time_ps == 1000 * 60
 
 for x in range(20):
@@ -75,11 +75,12 @@ for x in range(20):
     witnessed = system.sub.counter_b
     assert expected == witnessed, f'sub-b: expected {expected} but got {witnessed}'
     assert system.counter == 0
-    clk_b.event()
+    clk_b.event(clk_b.rules)
 assert clk_b.next_event_time_ps == 3333 * 20
 
 for x in range(2000):
-    min(clk, clk_b).event()
+    min_clk = min(clk, clk_b)
+    min_clk.event(min_clk.rules)
     assert system.counter == system.counter_b
 
 print(f'CLK:    next-t: {clk.next_event_time_ps}, events: {clk.num_events}')
