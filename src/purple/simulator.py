@@ -23,8 +23,10 @@ import random
 
 
 class SimulatorBase:
-    def __init__(self, system):
+    def __init__(self, system, random_seed):
         self.system = system
+        self.seed = random.getrandbits(48) if random_seed is None else random_seed
+        self.rand_gen = random.Random(self.seed)
 
     def interact(self):
         assert False, 'interactive simulator not yet implemented'
@@ -38,12 +40,10 @@ class SimulatorBase:
 
 class AtomicRuleSimulator(SimulatorBase):
     def __init__(self, system, random_seed = None):
-        super().__init__(system)
+        super().__init__(system, random_seed)
         self.num_invocations = 0
         self.all_rules = tuple(self.system.find_rule())
         self.rule_pool = self.make_rule_pool()
-        self.seed = random.getrandbits(48) if random_seed is None else random_seed
-        self.rand_gen = random.Random(self.seed)
         self.deadlocked = False
 
     def make_rule_pool(self):
@@ -105,8 +105,8 @@ class AtomicRuleSimulator(SimulatorBase):
 
 
 class ClockedSimulator(SimulatorBase):
-    def __init__(self, system, *clock_inputs):
-        super().__init__(system)
+    def __init__(self, system, *clock_inputs, random_seed = None):
+        super().__init__(system, random_seed)
         self.time_ps = 0
 
         # clock_inputs is a tuple of dicts:
@@ -155,7 +155,7 @@ class ClockedSimulator(SimulatorBase):
 
     def select_rules(self, clock, clock_name):
         'prior to clock event, select maximum one rule for each method'
-        return [rules[0] for rules in clock.rules_by_method.values()]
+        return [self.rand_gen.choice(rules) for rules in clock.rules_by_method.values()]
 
     def run_one_step(self, final_time_ps, show_print, print_headers):
         while True:

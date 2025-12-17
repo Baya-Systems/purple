@@ -23,8 +23,8 @@ FIXME
                     as usual, but revert to the previous if there is a guard exception
         fix tests   DONE
         fix bomb so it has external input and re-write the doc  DONE
-        add LocalGuards and test it
-        fix cbusy model in BayaArch
+        add LocalGuards and test it  DONE
+        fix cbusy/d2d models in BayaArch
 
     py3.14 breaks everything
     declaring a state type as Tuple not Tuple[XYZ] fails silently
@@ -93,6 +93,7 @@ cleanup
     support copying records from superclasses and subclasses?
     force port payload type to be a record or a leaf
     can ArrayIndex be mutable, so just used as an initial value but then changes (eg for initialising a linked-list)?
+    bad error message when clocked-process name is misspelt
 
 tests todo
     model (more tests)

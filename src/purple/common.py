@@ -67,6 +67,9 @@ class PurpleComponent:
             current_inv = top._dp_current_invocation
             current_inv.print(args, kwargs)
 
+    def guards_limited_to_code_block(self, component = None):
+       return LocalGuards_ContextManager(component or self)
+
     def __eq__(self, other):
         'other needs to be a Record/Model with the same hierarchical structure'
         try:
@@ -311,3 +314,23 @@ class ShareKeys:
             self.key_stack.append(key)
             yield key,value
             self.key_stack.pop(-1)
+
+
+class LocalGuards_ContextManager:
+    'allows a process to contain multiple code blocks that are independently guarded'
+    def __init__(self, component):
+        top = component._dp_top_component
+        self.current_inv = top._dp_current_invocation
+
+    def __enter__(self):
+        self.state_changes_on_enter = self.current_inv.state_changes.copy()
+        self.printout_on_enter = self.current_inv.printout.copy()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is GuardFailed:
+            self.current_inv.revert_state()
+            self.current_inv.state_changes = self.state_changes_on_enter
+            self.current_inv.apply_state()
+            self.current_inv.printout = self.printout_on_enter
+            return True
