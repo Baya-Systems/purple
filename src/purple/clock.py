@@ -29,7 +29,7 @@ class Clock:
         self.rules = rules
         if elaborated:
             rule_methods = set(r.method for r in rules)
-            self.rules_by_method = {m.__name__:[r for r in rules if r.method is m] for m in rule_methods}
+            self.rules_by_method = {m:[r for r in rules if r.method is m] for m in rule_methods}
 
     def __class_getitem__(cls, client_refs):
         # called on declaration

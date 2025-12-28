@@ -225,7 +225,7 @@ class PurpleComponent:
             return rv
 
     @classmethod
-    def add_dp_state_from_base(cls, base):
+    def _dp_add_state_from_base(cls, base):
         ''' called on declaration of a Model or Record subclass, once for every base
 
         bases have already been declared so they have clean _dp_state_types
@@ -233,7 +233,7 @@ class PurpleComponent:
         cls._dp_state_types.update(base._dp_state_types)
 
     @classmethod
-    def add_dp_state_from_annotations(cls):
+    def _dp_add_state_from_annotations(cls):
         ''' called on declaration of a Model or Record subclass, after bases are incorporated
         '''
         for state_element_name,state_element_type in cls.__annotations__.items():
@@ -269,27 +269,27 @@ class PurpleComponent:
                         current_initial_value, base_initial_value)
 
     @classmethod
-    def add_dp_rules_from_base(cls, base, typeproxy_class):
+    def _dp_add_rules_from_base(cls, base, typeproxy_class):
         ''' called on declaration of a Record subclass, once for every base
         '''
         if base._dp_rule_names:
             assert False, f'rules only possible in Model subclass, not {cls}'
 
     @classmethod
-    def add_dp_rules_from_annotations(cls, typeproxy_class):
+    def _dp_add_rules_from_annotations(cls, typeproxy_class):
         ''' called on declaration of a Record subclass, once for every base
         '''
         if 'rules' in cls.__annotations__ or 'non_rules' in cls.__annotations__:
             assert False, f'rules only possible in Model subclass, not {cls}'
 
     @classmethod
-    def add_dp_bindings_from_base(cls, base, raw_cls_bindings):
+    def _dp_add_bindings_from_base(cls, base, raw_cls_bindings):
         ''' called on declaration of a Record subclass, once for every base
         '''
         assert not base._dp_bindings, f'bindings only possible in Model subclass, not {cls}'
 
     @classmethod
-    def add_dp_bindings_from_annotations(cls, raw_cls_bindings):
+    def _dp_add_bindings_from_annotations(cls, raw_cls_bindings):
         ''' called on declaration of a Record subclass
         '''
         assert not cls._dp_bindings, f'bindings only possible in Model subclass, not {cls}'

@@ -158,13 +158,13 @@ class Record(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMet
                     yield dict(**first_dict, **others_dict)
 
     @classmethod
-    def add_dp_clocks_from_base(cls, base):
+    def _dp_add_clocks_from_base(cls, base):
         ''' called on declaration of a Record subclass, once for every base
         '''
         assert not base._dp_clock_declarations, f'clocks only possible in Model subclass, not {cls}'
 
     @classmethod
-    def add_dp_clocks_from_annotations(cls):
+    def _dp_add_clocks_from_annotations(cls):
         ''' called on declaration of a Record subclass
         '''
         if any(isinstance(v, clock.Clock) for v in cls.__annotations__.values()):

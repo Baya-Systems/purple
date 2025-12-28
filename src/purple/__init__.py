@@ -9,23 +9,6 @@ lint is not fully clean and probably cannot be, but valuable
     ruff check tst --ignore F821 --ignore F811 --ignore E722
 
 FIXME
-    clocked rules should have parameters that represent external input
-        def on_clk_edge(self, index: Integer[5]):
-            if trigger: etc
-        so this would explode to 1 rules not 5
-        require user to write a loop if they want a loop
-            parameters represent external-input or specification-dont-care
-            but looping over something with a guard does not work (ie guard should be same as continue)
-                for p in self.ports:
-                    with LocalGuards:
-                        p = self.get_next()
-                note that we will need to save the current state updates on entry, then add to them
-                    as usual, but revert to the previous if there is a guard exception
-        fix tests   DONE
-        fix bomb so it has external input and re-write the doc  DONE
-        add LocalGuards and test it  DONE
-        fix cbusy/d2d models in BayaArch
-
     py3.14 breaks everything
     declaring a state type as Tuple not Tuple[XYZ] fails silently
     start rules

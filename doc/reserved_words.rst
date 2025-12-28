@@ -29,6 +29,9 @@ names of state elements or rule methods or handler methods, etc..
   * ``update``
   * ``find_rule``
   * ``find_clock``
+  * ``guard``
+  * ``print``
+  * ``guards_limited_to_code_block``
 
 * for *Record* subclasses
 
@@ -41,5 +44,8 @@ names of state elements or rule methods or handler methods, etc..
   * ``deep_copy``
   * ``freeze``
   * ``melt``
+  * ``guard``
+  * ``print``
+  * ``guards_limited_to_code_block``
 
 * all reserved words from normal Python

@@ -116,7 +116,7 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
         return invoc.current_leaf_value(self, leaf_name)
 
     @classmethod
-    def add_dp_rules_from_base(cls, base, typeproxy_class):
+    def _dp_add_rules_from_base(cls, base, typeproxy_class):
         ''' called on declaration of a Model subclass, once for every base
 
         base class has a set _dp_rule_names, which are copied to cls
@@ -124,7 +124,7 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
         cls._dp_rule_names |= base._dp_rule_names
 
     @classmethod
-    def add_dp_rules_from_annotations(cls, typeproxy_class):
+    def _dp_add_rules_from_annotations(cls, typeproxy_class):
         ''' called on declaration of a Model subclass
 
         cls annotations may have a list of rules, each being one of
@@ -156,13 +156,13 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
             cls._dp_construct_rules()
 
     @classmethod
-    def add_dp_bindings_from_base(cls, base, raw_cls_bindings):
+    def _dp_add_bindings_from_base(cls, base, raw_cls_bindings):
         ''' called on declaration of a Model subclass, once for every base
         '''
         cls._dp_bindings.extend(base._dp_bindings)
 
     @classmethod
-    def add_dp_bindings_from_annotations(cls, raw_cls_bindings):
+    def _dp_add_bindings_from_annotations(cls, raw_cls_bindings):
         ''' called on declaration of a Model subclass
 
         FIXME:
@@ -172,13 +172,13 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
             cls._dp_bindings.append(b.convert_to_names())
 
     @classmethod
-    def add_dp_clocks_from_base(cls, base):
+    def _dp_add_clocks_from_base(cls, base):
         ''' called on declaration of a Model subclass, once for every base
         '''
         cls._dp_clock_declarations.update(base._dp_clock_declarations)
 
     @classmethod
-    def add_dp_clocks_from_annotations(cls):
+    def _dp_add_clocks_from_annotations(cls):
         ''' called on declaration of a Model subclass
         '''
         for k,v in cls.__annotations__.items():

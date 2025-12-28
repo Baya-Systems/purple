@@ -286,16 +286,16 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         # more recent overrides older in the base class list
         for base in reversed(bases):
             if isinstance(base, metacls):
-                cls.add_dp_state_from_base(base)
-                cls.add_dp_rules_from_base(base, PurpleTypeProxy)
-                cls.add_dp_bindings_from_base(base, classdict.bindings)
-                cls.add_dp_clocks_from_base(base)
+                cls._dp_add_state_from_base(base)
+                cls._dp_add_rules_from_base(base, PurpleTypeProxy)
+                cls._dp_add_bindings_from_base(base, classdict.bindings)
+                cls._dp_add_clocks_from_base(base)
 
         # get new state from this class's annotation hints
-        cls.add_dp_state_from_annotations()
-        cls.add_dp_rules_from_annotations(PurpleTypeProxy)
-        cls.add_dp_bindings_from_annotations(classdict.bindings)
-        cls.add_dp_clocks_from_annotations()
+        cls._dp_add_state_from_annotations()
+        cls._dp_add_rules_from_annotations(PurpleTypeProxy)
+        cls._dp_add_bindings_from_annotations(classdict.bindings)
+        cls._dp_add_clocks_from_annotations()
 
         # now do the initial-values, later so that type changes are visible to bases
         for base in reversed(bases):

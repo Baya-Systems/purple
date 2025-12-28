@@ -127,7 +127,6 @@ class ClockedSimulator(SimulatorBase):
                 component = system
                 while True:
                     assert component_name[0] == component.name[-1]
-                    print
                     component_name = component_name[1:]
                     if not component_name:
                         break
