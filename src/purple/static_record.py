@@ -37,3 +37,12 @@ class StaticRecord(model.Model):
             static_cls._dp_record_class = record_cls
             cls._dp_class_cache[record_cls] = static_cls
             return static_cls
+
+    @staticmethod
+    def _dp_hash_function(the_record):
+        # needed because static records can be part of Union and we may set the attribute
+        # of the owner object to point to the static-record for convenience, even though
+        # it is not part of the model state
+        # all elements of the static-record are part of the model state and will change when
+        # necessary (including to UnSelected) so this hash function does not need to include them
+        return hash(the_record.name)

@@ -20,7 +20,9 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
             self._dp_raw_setattr('_dp_rules', [])
             self._dp_raw_setattr('_dp_current_invocation', None)
             leaf_state = self._dp_elaborate(name, self, None, tuple(), self._dp_initial_value)
-            self._dp_raw_setattr('_dp_model_leaf_state', leaf_state)
+            # leaf state is usually (component-object, leaf-name), but not for (static) union
+            # initial value of state-hash is a functinal don't-care
+            self._dp_raw_setattr('_dp_model_state_hash', 0)
 
     def update(self, **values):
         '''in-place modification with values replacing named elements of self, hierarchically

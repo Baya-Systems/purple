@@ -218,3 +218,13 @@ class FrozenRecord(Record):
 
     def freeze(self):
         return self
+
+    def __hash__(self):
+        # needed because frozen records can be inside Tuple
+        # see rule.py for justification of this calculation
+        def element_hash(attr_name, attr_value):
+            name_hash_a = hash(('a', attr_name))
+            name_hash_b = hash((attr_name, 'b'))
+            return name_hash_a + name_hash_b * hash(attr_value)
+
+        return sum(element_hash(k, self._dp_raw_getattr(k)) for k in self._dp_state_types)

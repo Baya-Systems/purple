@@ -31,6 +31,7 @@ FIXME
         this is temporarily hacked to work, but
         coding style is bad - test for leaf in Tuple
         no protection against transient BitVector being in-place modifiable (so non-undoable state change)
+        so need frozen bitvectors (Leaf already plans for this)?
     configurable models
         how to have an array of non-identical things (eg buffers of different message types or different lengths)
         might not be an "Array", but still ought to be possible without code-in-declaration

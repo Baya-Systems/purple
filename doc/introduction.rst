@@ -105,6 +105,21 @@ Summary of Purple Concepts
   * arrays are syntactic sugar for *Model* or *Record*, depending on state content and use
   * arrays of arrays are possible
 
+* *Static* versus *Transient* versus *Frozen*
+
+  * anything that is part of the declared state of a model is called *Static*
+  * any Purple object - typically a *Record* that is created on the fly, used then discarded -
+    is called *Transient*.
+    It is only possible to store transient objects by converting them to static
+  * *Transient* objects can be mutable or immutable; immutable transient classes are called *Frozen*
+  * a *Static* object's state is fully defined by the values of the *Leaf* state elements
+    within its internal hierarchy.
+    All leaf state elements are immutable and typically their values are normal Python
+    objects (int, enum, bool, etc).
+    However in some cases a leaf value can contain Purple *Record* objects; for example the
+    *Tuple* type.
+    In such cases the record type is replaced by a *Frozen* record type, to prevent the
+    leaf from becoming mutable
 
 
 Simple Atomic-Rule Example

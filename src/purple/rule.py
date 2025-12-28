@@ -37,10 +37,55 @@ class Rule:
 
 
 class LeafStateChange:
-    def __init__(self, component, value_before, value_after):
+    def __init__(self, component, leaf_name, value_before, value_after):
         self.component = component
+        self.top_component = component._dp_top_component
+        self.leaf_name = leaf_name
+        self.full_name = (*component.name, leaf_name)
+
         self.value_before = value_before
         self.value_after = value_after
+
+    def hash_a_leaf(self, v):
+        # leaf (or static-record in case of Union changing type) can define a
+        # hash function separate from python's __hash__() so that it doesn't need
+        # to follow the same rules
+        hash_function = getattr(v, '_dp_hash_function', hash)
+        try:
+            hash_value = hash_function(v)
+        except TypeError:
+            print('Attempt to set leaf to unhashable type', type(v))
+            print('    leaf name:', '.'.join(self.component.name) + '.' + self.leaf_name)
+            print('    value:', v)
+            raise
+        return hash((self.full_name, hash_value))
+
+    def update_model_state_hash(self, v_current, v_to):
+        msh = self.top_component._dp_model_state_hash - self.hash_a_leaf(v_current) + self.hash_a_leaf(v_to)
+        self.top_component._dp_raw_setattr('_dp_model_state_hash', msh)
+
+    @staticmethod
+    def require_equal(a, b):
+        # some leaf state types have a custom __eq__ and don't allow equality testing for Undef
+        try:
+            assert a == b, f'{a} {b}'
+        except common.ReadUnDefined:
+            assert a._dp_eq__(b)
+
+    def make_change(self, v_from, v_to, v_check):
+        # leaf value changes from current_value to v_to
+        v_current = self.component._dp_raw_getattr(self.leaf_name)
+        if v_check is common.UniqueObject:
+            v_check = v_from
+        self.require_equal(v_check, v_current)
+        self.update_model_state_hash(v_current, v_to)
+        self.component._dp_raw_setattr(self.leaf_name, v_to)
+
+    def apply(self, check_value = common.UniqueObject):
+        self.make_change(self.value_before, self.value_after, check_value)
+
+    def revert(self, check_value = common.UniqueObject):
+        self.make_change(self.value_after, self.value_before, check_value)
 
 
 class Invocation:
@@ -48,6 +93,7 @@ class Invocation:
     '''
     def __init__(self, rule):
         self.rule = rule
+        self.top_component = rule.top_component
         self.exc_type = None
         self.exc_value = None
         self.guarded = False
@@ -55,21 +101,26 @@ class Invocation:
         self.printout = []
 
     def __enter__(self):
-        self.rule.top_component._dp_raw_setattr('_dp_current_invocation', self)
+        self.top_component._dp_raw_setattr('_dp_current_invocation', self)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         if exc_type:
+            # FIXME
+            # cannot revert state if the exception was caused by an unhashable leaf
+            # so should detect such cases (they are fatal and make a mess for the user)
             self.revert_state()
             if exc_type is common.GuardFailed:
                 self.guarded = True
             else:
                 self.exc_type = exc_type
                 self.exc_value = exc_value
-        self.rule.top_component._dp_raw_setattr('_dp_current_invocation', None)
+        self.top_component._dp_raw_setattr('_dp_current_invocation', None)
         return True
 
     def current_leaf_value(self, component, leaf_attr_name):
+        # this method is not required if changes are always immediately visible in-rule
+        # which is the case today
         update_key = component.name, leaf_attr_name
         latest_update = self.state_changes.get(update_key, None)
         if latest_update is None:
@@ -84,29 +135,21 @@ class Invocation:
         repeated_update = self.state_changes.get(update_key, None)
         if repeated_update is None:
             original_value = component._dp_raw_getattr(leaf_attr_name)
+            check_value = original_value
         else:
             original_value = repeated_update.value_before
-        self.state_changes[update_key] = LeafStateChange(component, original_value, leaf_new_value)
-        component._dp_raw_setattr(leaf_attr_name, leaf_new_value)
-
-    def require_equal(self, a, b):
-        # some leaf state types have a custom __eq__ and don't allow equality testing for Undef
-        try:
-            assert a == b
-        except common.ReadUnDefined:
-            assert a._dp_eq__(b)
+            check_value = repeated_update.value_after
+        change = LeafStateChange(component, leaf_attr_name, original_value, leaf_new_value)
+        self.state_changes[update_key] = change
+        change.apply(check_value)
 
     def revert_state(self):
-        for (cn, leaf_name), change in self.state_changes.items():
-            current = change.component._dp_raw_getattr(leaf_name)
-            self.require_equal(current, change.value_after)
-            change.component._dp_raw_setattr(leaf_name, change.value_before)
+        for change in self.state_changes.values():
+            change.revert()
 
     def apply_state(self):
-        for (cn, leaf_name), change in self.state_changes.items():
-            current = change.component._dp_raw_getattr(leaf_name)
-            self.require_equal(current, change.value_before)
-            change.component._dp_raw_setattr(leaf_name, change.value_after)
+        for change in self.state_changes.values():
+            change.apply()
 
     def print(self, args, kwargs):
         self.printout.append((args, kwargs))
