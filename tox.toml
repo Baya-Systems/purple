@@ -1,0 +1,28 @@
+env_list =  ["test"]
+
+[env.test]
+description = "install pytest in a virtual environment and invoke it on the tests folder"
+basepython = ["py312"]
+package = "editable"
+deps = [
+    "pytest>=7",
+    "pytest-sugar",
+]
+commands = [[ "pytest", "tests/", { replace = "posargs", extend = true} ]]
+
+# This doesn't work yet as there's no sphinx conf.py
+[env.docs]
+description = "build documentation"
+basepython = ["py312"]
+skip_install = true
+deps = "sphinx>=4"
+commands = [
+    ["sphinx-build", "-d", "{envtmpdir}{/}docs", "doc", "{toxworkdir}{/}docs_out", "--color", "-b", "html"]
+]
+
+[env.format]
+description = "install black in a virtual environment and invoke it on the current folder"
+deps = ["black==22.3.0"]
+skip_install = true
+commands = [[ "black", "." ]]
+
