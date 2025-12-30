@@ -66,42 +66,47 @@ class AtomicRuleSimulator(SimulatorBase):
         final_num_invocations = self.num_invocations + num_invocations
         if num_guards_before_exhaustive is None:
             num_guards_before_exhaustive = self.default_num_guards_before_exhaustive()
+        num_guards_before_exhaustive = max(num_guards_before_exhaustive, 1)
 
         while self.num_invocations < final_num_invocations:
-            # try to find a rule that can run
-            for _ in range(num_guards_before_exhaustive):
-                result = self.choose_rule().invoke(
+            self.invoke_one_rule(show_print, print_headers, num_guards_before_exhaustive)
+            if self.deadlocked:
+                break
+
+    def invoke_one_rule(self, show_print, print_headers, num_guards_before_exhaustive):
+        # try to find a rule that can run
+        for _ in range(num_guards_before_exhaustive):
+            result = self.choose_rule().invoke(
+                check = True,
+                print_headers = print_headers,
+                show_print = show_print,
+            )
+            if not result.guarded:
+                break
+
+        # failed guesswork; search exhaustively and select one at random
+        if result.guarded:
+            invokable = []
+            for rule in self.all_rules:
+                result = rule.invoke(
                     check = True,
-                    print_headers = print_headers,
-                    show_print = show_print,
+                    print_headers = False,
+                    show_print = False,
                 )
                 if not result.guarded:
-                    break
+                    invokable.append(result)
+                    result.revert_state()
 
-            # failed guesswork; search exhaustively and select one at random
-            if result.guarded:
-                invokable = []
-                for rule in self.all_rules:
-                    result = rule.invoke(
-                        check = True,
-                        print_headers = False,
-                        show_print = False,
-                    )
-                    if not result.guarded:
-                        invokable.append(result)
-                        result.revert_state()
+            if invokable:
+                result = self.rand_gen.choice(invokable)
+                result.apply_state()
+                if show_print:
+                    result.produce_printout(print_headers)
+            else:
+                print('System Deadlock')
+                self.deadlocked = True
 
-                if invokable:
-                    result = self.rand_gen.choice(invokable)
-                    result.apply_state()
-                    if show_print:
-                        result.produce_printout(print_headers)
-                else:
-                    print('System Deadlock')
-                    self.deadlocked = True
-                    break
-
-            self.num_invocations += 1
+        self.num_invocations += 1
 
 
 class ClockedSimulator(SimulatorBase):

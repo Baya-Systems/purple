@@ -41,7 +41,8 @@ class LeafStateChange:
         self.component = component
         self.top_component = component._dp_top_component
         self.leaf_name = leaf_name
-        self.full_name = (*component.name, leaf_name)
+        self.full_name_hash_a = hash((component.name, leaf_name))
+        self.full_name_hash_b = hash((leaf_name, component.name))
 
         self.value_before = value_before
         self.value_after = value_after
@@ -58,7 +59,9 @@ class LeafStateChange:
             print('    leaf name:', '.'.join(self.component.name) + '.' + self.leaf_name)
             print('    value:', v)
             raise
-        return hash((self.full_name, hash_value))
+
+        # use two different name hashes; python's internal hash() isn't ideal
+        return self.full_name_hash_a ^ self.full_name_hash_b * hash_value
 
     def update_model_state_hash(self, v_current, v_to):
         msh = self.top_component._dp_model_state_hash - self.hash_a_leaf(v_current) + self.hash_a_leaf(v_to)
