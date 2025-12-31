@@ -65,11 +65,11 @@ class Sim(AtomicRuleSimulator):
         except ReadUnDefined:
             v = UnDefined
         except AttributeError:
-            # special case for elements within union of records
+            # special case for elements within unselected record in union
             v = UnSelected
         if isinstance(v, Record):
-            # special case for a mixed record/leaf union
-            v = UnSelected
+            # special case for actual record object selected in union
+            v = id(v)
         return v
 
     def state_as_tuple(self):
