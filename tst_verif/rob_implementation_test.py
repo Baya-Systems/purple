@@ -29,15 +29,21 @@ Next
     same checking with same spec-model works out of the box
 '''
 
-from purple import Integer, ModuloInteger, Boolean, Model, Record, Generic, Port, Clock, Registered_Output_Port
+from purple import (
+    Integer, ModuloInteger, Boolean,
+    Model, Record, Generic, Port, Clock, Registered_Output_Port,
+    ClockedSimulator, Tuple,
+)
 from rob_spec_test import Config, Types
 from cli import args
+
 
 class Config(Config):
     pr_new_req = 0.3
     pr_accept_req = 0.5
     pr_comp = 0.3
     pr_accept_comp = 0.5
+    suppress_implementation_checks = False
 
 
 @Generic
@@ -194,9 +200,6 @@ class ReOrderBuffer(Model):
 
         tq_id = vr.txn_id >> Config.source_id_width
         tq = self.txn_queue[tq_id]
-        if tq.source_id != vr.txn_id - (tq_id << Config.source_id_width):
-            print('BANG', tq_id, tq)
-            print('BANG', vr.txn_id)
         assert tq.source_id == vr.txn_id - (tq_id << Config.source_id_width)
         assert not tq.resp_valid
 
@@ -234,134 +237,175 @@ class ReOrderBuffer(Model):
         return -(self.round_robin_start - tqid_and_tq[1].source_id)
 
 
-if __name__ == args.test_name + '_test':
-    # self-test for the clocked version
-    from purple import ClockedSimulator, Tuple
-
-    # should fix the lack of external inputs to clocked rules and then remove random
-    import random
-
-    class Txn(Record):
-        source_id: Integer[...]
-        dest_id: Integer[...]
-        req_payload: Integer[...]
-        resp_payload: Integer[...]
-        dest_id_valid: Boolean
-        resp_payload_valid: Boolean
-
-    def rand_int(int_type):
-        min_val,max_val = int_type.param_bounds
-        return random.randrange(min_val, max_val)
+class TxnTracker(Record):
+    source_id: Integer[...]
+    dest_id: Integer[...]
+    req_payload: Integer[...]
+    resp_payload: Integer[...]
+    dest_id_valid: Boolean
+    resp_payload_valid: Boolean
 
 
-    class Testbench(Model):
-        history: Tuple[Txn]
+class Implementation_Testbench(Model):
+    history: Tuple[TxnTracker]
 
-        req_out: ValidReadyOut[Types.Payload, Types.RequesterId]
-        req_in: ValidReadyIn[Types.Payload, Types.CompleterId]
-        comp_out: ValidReadyOut[Types.Payload, Types.CompleterId]
-        comp_in: ValidReadyIn[Types.Payload, Types.RequesterId]
+    req_out: ValidReadyOut[Types.Payload, Types.RequesterId]
+    req_in: ValidReadyIn[Types.Payload, Types.CompleterId]
+    comp_out: ValidReadyOut[Types.Payload, Types.CompleterId]
+    comp_in: ValidReadyIn[Types.Payload, Types.RequesterId]
 
-        dut: ReOrderBuffer[
-            bind_valid_ready(_.request_in, req_out),
-            bind_valid_ready(req_in, _.request_out),
-            bind_valid_ready(_.completion_in, comp_out),
-            bind_valid_ready(comp_in, _.completion_out),
-        ]
+    dut: ReOrderBuffer[
+        bind_valid_ready(_.request_in, req_out),
+        bind_valid_ready(req_in, _.request_out),
+        bind_valid_ready(_.completion_in, comp_out),
+        bind_valid_ready(comp_in, _.completion_out),
+    ]
 
-        clk: Clock[on_clock_edge, dut.clk]
+    clk: Clock[on_clock_edge, dut.clk]
 
-        def on_clock_edge(self):
-            # receive completions and check ordering
-            vr = self.comp_in
-            if vr.valid and vr.ready:
-                # find the oldest transaction with matching requester-side ID
-                all_txns = self.match_txns(lambda t: t.source_id == vr.txn_id)
-                idx,txn = all_txns[0]
+    def on_clock_edge(self,
+        set_comp_valid: Boolean,
+        comp_index: Types.CompleterId,
+        comp_payload: Types.Payload,
+        set_req_valid: Boolean,
+        req_payload: Types.Payload,
+        req_id: Types.RequesterId,
+        set_req_ready: Boolean,
+        set_comp_ready: Boolean,
+    ):
+        # receive completions and check ordering
+        vr = self.comp_in
+        if vr.valid and vr.ready:
+            # find the oldest transaction with matching requester-side ID
+            all_txns = self.match_txns(lambda t: t.source_id == vr.txn_id)
+            idx,txn = all_txns[0]
 
+            if not Config.suppress_implementation_checks:
                 assert txn.dest_id_valid
                 assert txn.resp_payload_valid
                 assert txn.resp_payload == vr.payload
 
-                self.history.pop(idx)
-                self.print(f'\t\t\t\t\t\t\t\t\t\t\t\tRequester completion: payload={vr.payload} txn_id={vr.txn_id}')
+            self.history.pop(idx)
+            self.print(f'\t\t\t\t\t\t\t\t\t\t\t\tRequester completion: payload={vr.payload} txn_id={vr.txn_id}')
 
-            # send completions, possibly out of order
-            vr = self.comp_out
-            if (vr.ready or not vr.valid):
-                all_txns = self.match_txns(lambda t: t.dest_id_valid and not t.resp_payload_valid)
-                valid = all_txns and random.random() < Config.pr_comp
+        # send completions, possibly out of order
+        vr = self.comp_out
+        if (vr.ready or not vr.valid):
+            all_txns = self.match_txns(lambda t: t.dest_id_valid and not t.resp_payload_valid)
+            valid = all_txns and set_comp_valid
 
-                if valid:
-                    idx,txn = random.choice(all_txns)
-                    vr.payload = rand_int(Types.Payload)
-                    vr.txn_id = txn.dest_id
-                    self.print(f'\t\t\t\t\t\t\t\tCompleter completion: payload={vr.payload} txn_id={vr.txn_id}')
+            if valid:
+                idx,txn = all_txns[comp_index % len(all_txns)]
+                vr.payload = comp_payload
+                vr.txn_id = txn.dest_id
+                self.print(f'\t\t\t\t\t\t\t\tCompleter completion: payload={vr.payload} txn_id={vr.txn_id}')
 
-                    # tell the requester-side checker what to expect
-                    self.history.replace(idx, Txn(
-                        source_id = txn.source_id,
-                        dest_id = txn.dest_id,
-                        req_payload = txn.req_payload,
-                        resp_payload = vr.payload,
-                        dest_id_valid = True,
-                        resp_payload_valid = True,
-                    ))
-                vr.valid = valid
-
-            # capture any requests that were sent to the completer
-            vr = self.req_in
-            if vr.valid and vr.ready:
-                # check for unique-ID at completer side
-                assert not self.match_txns(
-                    lambda t: t.dest_id_valid and t.dest_id == vr.txn_id and not t.resp_payload_valid)
-
-                # find oldest transaction with matching requester-side ID
-                source_id = vr.txn_id & (2**Config.source_id_width - 1)
-                all_txns = self.match_txns(lambda t: t.source_id == source_id and not t.dest_id_valid)
-                idx,txn = all_txns[0]
-
-                # record the ID so that we can send a response
-                self.history.replace(idx, Txn(
+                # tell the requester-side checker what to expect
+                self.history.replace(idx, TxnTracker(
                     source_id = txn.source_id,
-                    dest_id = vr.txn_id,
+                    dest_id = txn.dest_id,
                     req_payload = txn.req_payload,
+                    resp_payload = vr.payload,
                     dest_id_valid = True,
+                    resp_payload_valid = True,
+                ))
+            vr.valid = valid
+
+        # capture any requests that were sent to the completer
+        vr = self.req_in
+        if vr.valid and vr.ready:
+            # check for unique-ID at completer side
+            if not Config.suppress_implementation_checks:
+                assert not self.match_txns(
+                    lambda t: t.dest_id_valid and t.dest_id == vr.txn_id and not t.resp_payload_valid
+                )
+
+            # find oldest transaction with matching requester-side ID
+            source_id = vr.txn_id & (2**Config.source_id_width - 1)
+            all_txns = self.match_txns(lambda t: t.source_id == source_id and not t.dest_id_valid)
+            idx,txn = all_txns[0]
+
+            # record the ID so that we can send a response
+            self.history.replace(idx, TxnTracker(
+                source_id = txn.source_id,
+                dest_id = vr.txn_id,
+                req_payload = txn.req_payload,
+                dest_id_valid = True,
+                resp_payload_valid = False,
+            ))
+            self.print(f'\t\t\t\tCompleter request: payload={vr.payload} txn_id={vr.txn_id}')
+
+        # inject new requests
+        vr = self.req_out
+        if (vr.ready or not vr.valid):
+            valid = set_req_valid
+            if valid:
+                vr.payload = req_payload
+                vr.txn_id = req_id
+                self.print(f'Requester request: payload={vr.payload} txn_id={vr.txn_id}')
+                self.history.append(TxnTracker(
+                    source_id = vr.txn_id,
+                    req_payload = vr.payload,
+                    dest_id_valid = False,
                     resp_payload_valid = False,
                 ))
-                self.print(f'\t\t\t\tCompleter request: payload={vr.payload} txn_id={vr.txn_id}')
+            vr.valid = valid
 
-            # inject new requests
-            vr = self.req_out
-            if (vr.ready or not vr.valid):
-                valid = random.random() < Config.pr_new_req
-                if valid:
-                    vr.payload = rand_int(Types.Payload)
-                    vr.txn_id = rand_int(Types.RequesterId)
-                    self.print(f'Requester request: payload={vr.payload} txn_id={vr.txn_id}')
-                    self.history.append(Txn(
-                        source_id = vr.txn_id,
-                        req_payload = vr.payload,
-                        dest_id_valid = False,
-                        resp_payload_valid = False,
-                    ))
-                vr.valid = valid
+        # set ready signals for next clock cycle
+        self.req_in.ready = set_req_ready
+        self.comp_in.ready = set_comp_ready
 
-            # set ready signals for next clock cycle
-            self.req_in.ready = (random.random() < Config.pr_accept_req)
-            self.comp_in.ready = (random.random() < Config.pr_accept_comp)
-
-        def match_txns(self, filter):
-            return [(i,t) for i,t in enumerate(self.history) if filter(t)]
+    def match_txns(self, filter):
+        return [(i,t) for i,t in enumerate(self.history) if filter(t)]
 
 
-    tb = Testbench()
-    sim = ClockedSimulator(tb, dict(frequency_GHz = 1.0, name = 'clk'))
+class RobImplSimulator(ClockedSimulator):
+    def __init__(self, *a, **ka):
+        super().__init__(*a, **ka)
+        # now split rules into subsets according to the valid/ready conditions
+        # assumes only top-level (testbench) rules take input (parameters) from simulator
+        # requires single-clock
+        assert len(self.clocks) == 1
+        clock,clock_name = self.clocks[0]
+        assert clock_name == 'clk'
+        self.non_tb_rules = [r for r in clock.rules if r.component is not self.system]
+        assert all(not r.params for r in self.non_tb_rules)
+        print('found non-TB rules:', len(self.non_tb_rules), 'out of', len(clock.rules))
+        self.rules_by_vr = dict()
+        tb_rules = [r for r in clock.rules if r.component is self.system]
+        for comp_valid in True,False:
+            cv_rules = [r for r in tb_rules if r.params['set_comp_valid'] == comp_valid]
+            for req_valid in True,False:
+                rv_rules = [r for r in cv_rules if r.params['set_req_valid'] == req_valid]
+                for req_ready in True,False:
+                    rr_rules = [r for r in rv_rules if r.params['set_req_ready'] == req_ready]
+                    for comp_ready in True,False:
+                        cr_rules = [r for r in rr_rules if r.params['set_comp_ready'] == comp_ready]
+                        self.rules_by_vr[(comp_valid, req_valid, req_ready, comp_ready)] = cr_rules
+        print('found tb rules:', [len(v) for k,v in self.rules_by_vr.items()])
+
+    def select_rules(self, clock, clock_name):
+        # there is only one clock in this testbench
+        assert clock_name == 'clk'
+        comp_valid = self.rand_gen.random() < Config.pr_comp
+        req_valid = self.rand_gen.random() < Config.pr_new_req
+        req_ready = self.rand_gen.random() < Config.pr_accept_req
+        comp_ready = self.rand_gen.random() < Config.pr_accept_comp
+        vr_subset = self.rules_by_vr[(comp_valid, req_valid, req_ready, comp_ready)]
+        tb_rule = self.rand_gen.choice(vr_subset)
+        return [tb_rule] + self.non_tb_rules
+
+
+# run simulation if imported as a top-level test
+if __name__ == args.test_name + '_test':
+    print('done import')
+    tb = Implementation_Testbench()
+    # elaboration takes a long time because the number of rules is huge
+    print('done elaboration')
+    sim = RobImplSimulator(tb, dict(frequency_GHz = 1.0, name = 'clk'))
+    print('done building simulator')
     n = 100 if args.quick else 10000
-    try:
-        sim.run(cycles_of_fastest_clock = n, print_headers = False)
-    except AssertionError:
-        raise
+    sim.run(cycles_of_fastest_clock = n, print_headers = False)
 
     print('Free:', tb.dut.any_free_tq, tb.dut.first_free_tq)
     print('Req:', tb.dut.any_req_tq, tb.dut.oldest_req_tq, tb.dut.newest_req_tq)

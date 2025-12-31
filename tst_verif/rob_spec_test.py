@@ -101,9 +101,7 @@ class ReOrderBufferSpec(Model):
         source_id = comp.txn_id - (context_id << Config.source_id_width)
         context = self.txn_queue[context_id]
 
-        assert context.occupied
-        assert context.source_id == source_id
-        assert not context.resp_seen
+        self.guard(context.occupied and context.source_id == source_id and not context.resp_seen)
 
         context.response_payload = comp.payload
         context.resp_seen = True
@@ -255,6 +253,7 @@ if __name__ == args.test_name + '_test':
     n = 100 if args.quick else 10000
     try:
         sim.run(num_invocations = n, print_headers = False)
+        assert not sim.deadlocked
     except AssertionError:
         print('--- TB')
         for t in tb.history:

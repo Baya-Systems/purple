@@ -10,13 +10,20 @@ lint is not fully clean and probably cannot be, but valuable
 
 FIXME
     py3.14 breaks everything
+        with 3.13 elaboration is not deterministic; fix this in 3.14
+        problem seems to be the order of rules, which can affect randomised simulators
     declaring a state type as Tuple not Tuple[XYZ] fails silently
     start rules
+        can there be more than one?  can they have parameters?
         class X(Model):
             b: SomeType
             end_of_elaboration: make_b
             def make_b(self): self.b = blah
     invariants
+    rules with parameters get very slow
+        rather than generating a separate rule for each parameter set during elaboration
+        choose a parameter set after rule selection, by randomisation of record/leaf
+        saves memory, saves startup time, might increase simulation time
     coverage definition methods
     array with enum keys
     save/restore
@@ -43,6 +50,8 @@ FIXME
             eg same basic generic type but different parameters
         can a (frozen) transient Record object be a parameter to Generic?
     can I have a Tuple of Union?
+    change Generic so that it sets the class name to something useful unless
+      it has been overridden
     array-index variant allowing modification after elab
         only sets initial value
         question is: what are the limits on modifications?
