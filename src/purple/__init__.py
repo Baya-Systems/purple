@@ -20,6 +20,11 @@ FIXME
             end_of_elaboration: make_b
             def make_b(self): self.b = blah
     invariants
+    very common case is to have a variable that may be invalid or valid
+        so create a convenient way to do this
+        class A(Model):
+            x: MyRecord | Const[None] # needs if x is None
+            y: Optional[MyRecord] # same but has a method y.is_valid()
     rules with parameters get very slow
         rather than generating a separate rule for each parameter set during elaboration
         choose a parameter set after rule selection, by randomisation of record/leaf
@@ -39,6 +44,10 @@ FIXME
         coding style is bad - test for leaf in Tuple
         no protection against transient BitVector being in-place modifiable (so non-undoable state change)
         so need frozen bitvectors (Leaf already plans for this)?
+    where a leaf has an object type (like Tuple or BitVector or Modulo) it would be nice to be able
+        to derive new object types in a relatively easy way
+        currently needs re-write of the Generic to use the derived class
+        use case: I tried to add a method to Tuple
     configurable models
         how to have an array of non-identical things (eg buffers of different message types or different lengths)
         might not be an "Array", but still ought to be possible without code-in-declaration

@@ -13,9 +13,13 @@ A simple Re-order Buffer Structure
 * The completer sends responses
 * The ROB sends the responses to the requester in order depending on the original ID
 * The selection of completer ID is non-architectural (many different implementations are acceptable)
+
+In order to make the rule behaviour at bit more interesting, we have 2 requesters
+which compete for access to one re-order buffer and have a storage stage after arbitration
+This doesn't make much sense as a specification; is done for code testing
 '''
 
-from purple import Integer, Boolean, Record, Model, Port
+from purple import Integer, Boolean, Record, Model, Port, Constant
 from cli import args
 
 class Config:
@@ -42,6 +46,7 @@ ContextNumber = Integer[Config.num_contexts]
 
 class TxnContext(Record):
     occupied: Boolean = False
+    source_is_a: Boolean
     source_id: Types.RequesterId
     resp_seen: Boolean
     response_payload: Types.Payload
@@ -54,27 +59,41 @@ class TxnContext(Record):
 
 class ReOrderBufferSpec(Model):
     txn_queue: Config.num_contexts * TxnContext
+    next_request: (Types.RequesterPacket | Constant[None]) = None
+    next_request_was_from_a: Boolean
 
-    request_in: Port[Types.RequesterPacket]
+    request_in_a: Port[Types.RequesterPacket]
+    request_in_b: Port[Types.RequesterPacket]
     request_out: Port[Types.CompleterPacket]
 
     completion_in: Port[Types.CompleterPacket]
-    completion_out: Port[Types.RequesterPacket]
+    completion_out_a: Port[Types.RequesterPacket]
+    completion_out_b: Port[Types.RequesterPacket]
 
     rules: [
-        on_request,         # get request from input port, store in buffer and send to output port
+        on_request,         # get request from input port, store in temporary buffer
+        send_request,       # get request from temporary buffer, store in buffer and send to completer
         on_completion,      # get completion from input port, store in buffer
         send_completion,    # if oldest, pop completion from buffer and send to output port
     ]
 
-    def on_request(self, context_id: ContextNumber):
-        req = self.request_in
+    def on_request(self, source_is_a: Boolean):
+        self.guard(self.next_request is None)
+        req = self.request_in_a if source_is_a else self.request_in_b
+        self.next_request = req
+        self.next_request_was_from_a = source_is_a
 
+    def send_request(self, context_id: ContextNumber):
+        self.guard(self.next_request is not None)
         context = self.txn_queue[context_id]
         self.guard(not context.occupied)
 
+        req = self.next_request
+        req_from_a = self.next_request_was_from_a
         try:
-            previous = next(c for c in self.txn_queue if c.occupied and c.source_id == req.txn_id and c.newest)
+            previous = next(c for c in self.txn_queue if
+                c.occupied and c.source_id == req.txn_id and c.newest and c.source_is_a == req_from_a
+            )
             previous.newest = False
             previous.next = context_id
             oldest = False
@@ -84,6 +103,7 @@ class ReOrderBufferSpec(Model):
         self.txn_queue[context_id] = TxnContext(
             occupied = True,
             source_id = req.txn_id,
+            source_is_a = req_from_a,
             resp_seen = False,
             oldest = oldest,
             newest = True,
@@ -93,6 +113,7 @@ class ReOrderBufferSpec(Model):
             payload = req.payload,
             txn_id = (context_id << Config.source_id_width) | req.txn_id,
         )
+        self.next_request = None
 
     def on_completion(self):
         comp = self.completion_in
@@ -110,10 +131,14 @@ class ReOrderBufferSpec(Model):
         context = self.txn_queue[context_id]
         self.guard(context.occupied and context.resp_seen and context.oldest)
 
-        self.completion_out = Types.RequesterPacket(
+        comp = Types.RequesterPacket(
             payload = context.response_payload,
             txn_id = context.source_id,
         )
+        if context.source_is_a:
+            self.completion_out_a = comp
+        else:
+            self.completion_out_b = comp
 
         if not context.newest:
             next_context = self.txn_queue[context.next]
@@ -128,6 +153,7 @@ if __name__ == args.test_name + '_test':
 
     class TxnTracker(Record):
         source_id: Integer[...]
+        source_is_a: Boolean
         dest_id: Integer[...]
         req_payload: Integer[...]
         resp_payload: Integer[...]
@@ -138,13 +164,16 @@ if __name__ == args.test_name + '_test':
     class Testbench(Model):
         history: Tuple[TxnTracker]
 
-        request_out: Port[Types.RequesterPacket] << req_at_requester
+        request_out_a: Port[Types.RequesterPacket] << req_at_requester_a
+        request_out_b: Port[Types.RequesterPacket] << req_at_requester_b
         request_in: Port[Types.CompleterPacket] >> req_at_completer
 
         completion_out: Port[Types.CompleterPacket] << comp_at_completer
-        completion_in: Port[Types.RequesterPacket] >> comp_at_requester
+        completion_in_a: Port[Types.RequesterPacket] >> comp_at_requester_a
+        completion_in_b: Port[Types.RequesterPacket] >> comp_at_requester_b
 
         next_req: Types.RequesterPacket
+        next_req_from_a: Boolean
         next_req_valid: Boolean = False
         next_comp: Types.CompleterPacket
         next_comp_valid: Boolean = False
@@ -152,34 +181,45 @@ if __name__ == args.test_name + '_test':
         rules: [gen_req, gen_comp]
 
         dut: ReOrderBufferSpec[
-            _.request_in << request_out,
+            _.request_in_a << request_out_a,
+            _.request_in_b << request_out_b,
             _.request_out >> request_in,
             _.completion_in << completion_out,
-            _.completion_out >> completion_in,
+            _.completion_out_a >> completion_in_a,
+            _.completion_out_b >> completion_in_b,
         ]
 
-        def gen_req(self, packet: Types.RequesterPacket):
+        def gen_req(self, from_a: Boolean, packet: Types.RequesterPacket):
             # rule: creates a new request packet to start a transaction
             self.guard(not self.next_req_valid)
             self.next_req_valid = True
             self.next_req = packet
+            self.next_req_from_a = from_a
             self.history.append(TxnTracker(
                 source_id = packet.txn_id,
+                source_is_a = from_a,
                 req_payload = packet.payload,
                 dest_id_valid = False,
                 resp_payload_valid = False,
             ))
 
-        def req_at_requester(self):
+        def req_at_requester_a(self):
             # port handler: sends the latest request packet to the DUT
-            self.guard(self.next_req_valid)
-            self.print('Requester request:', self.next_req)
+            self.guard(self.next_req_valid and self.next_req_from_a)
+            self.print('Requester A request:', self.next_req)
+            self.next_req_valid = False
+            return self.next_req
+
+        def req_at_requester_b(self):
+            # port handler: sends the latest request packet to the DUT
+            self.guard(self.next_req_valid and not self.next_req_from_a)
+            self.print('Requester B request:', self.next_req)
             self.next_req_valid = False
             return self.next_req
 
         def req_at_completer(self, packet):
             # port handler: request received from DUT, testbench will later send a completion
-            self.print('                                Completer request:', packet)
+            self.print('Completer request:', packet)
 
             # check for unique-ID at completer side
             assert not self.match_txns(lambda t: t.dest_id_valid and t.dest_id == packet.txn_id)
@@ -192,6 +232,7 @@ if __name__ == args.test_name + '_test':
             # record the ID so that we can send a response
             self.history.replace(idx, TxnTracker(
                 source_id = txn.source_id,
+                source_is_a = txn.source_is_a,
                 dest_id = packet.txn_id,
                 req_payload = txn.req_payload,
                 dest_id_valid = True,
@@ -213,6 +254,7 @@ if __name__ == args.test_name + '_test':
             idx,txn = all_txns[0]
             self.history.replace(idx, TxnTracker(
                 source_id = txn.source_id,
+                source_is_a = txn.source_is_a,
                 dest_id = txn.dest_id,
                 req_payload = txn.req_payload,
                 resp_payload = packet.payload,
@@ -230,12 +272,26 @@ if __name__ == args.test_name + '_test':
             self.next_comp_valid = False
             return self.next_comp
 
-        def comp_at_requester(self, packet):
+        def comp_at_requester_a(self, packet):
             # port handler: DUT has provided a completion, transaction is complete
-            self.print('                                Requester completion:', packet)
+            self.print('Requester A completion:', packet)
 
             # find the oldest transaction with matching requester-side ID
-            all_txns = self.match_txns(lambda t: t.source_id == packet.txn_id)
+            all_txns = self.match_txns(lambda t: t.source_id == packet.txn_id and t.source_is_a)
+            idx,txn = all_txns[0]
+            self.history.pop(idx)
+
+            # check stuff
+            assert txn.dest_id_valid
+            assert txn.resp_payload_valid
+            assert txn.resp_payload == packet.payload
+
+        def comp_at_requester_b(self, packet):
+            # port handler: DUT has provided a completion, transaction is complete
+            self.print('Requester B completion:', packet)
+
+            # find the oldest transaction with matching requester-side ID
+            all_txns = self.match_txns(lambda t: t.source_id == packet.txn_id and not t.source_is_a)
             idx,txn = all_txns[0]
             self.history.pop(idx)
 

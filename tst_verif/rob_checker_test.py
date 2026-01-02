@@ -15,32 +15,20 @@ A simple testbench for the spec is implemented which
 Initial approach is fully manual (here)
 Will see which parts of it make sense to move to be part of Purple
 
+Notes:
+    only works if the entire history of the implementation-sim is available;
+    cannot eg find a solution for the first 100 cycles then look for a solution for
+    the next 100 keeping the same search history.  this is because some rule order
+    options may have been ruled out during the search, which additional stimulus
+    make possible/necessary
+
 Status:
-    unuseably slow with systematic rule order search
-        fails with state-hash detection to accelerate search
-    add dual completers to system (makes for more interesting ordering of completions)
-        and maybe forces some rule order correction
-        current DUT doesn't need it because the next rule is always the one that has the next free TQ-ID
-            so always shows up in the inner loop
-        if I have 2 completers it doesn't make rule order, reserved TQ means either order of on-comp
-            is valid, both execute and both orders are OK
-    dual requesters?
-        each req has a rob, TQ is still reserved for every comp
-        so comps can go in any order
-    need some kind of shared resource
-        like a FIFO buffer in the completer or requester
-        if the buffer gets out of order, the rules that fed it need to be reverted
-        could do FIFOs for both req and comp in completer-bridge
-        comp doesn't help, can always sink
-        very artificial, not needed in a spec
-        dual requesters but single rob?
-            now the requesters arb for rob access, so if wrong order, need to de-alloc
-            but spec still has a single rule to pull the new req, alloc in TQ and send to completer
-            so also split that into alloc-to-rob and send-to-completer
-                still dumb in a spec, but a little bit better then a FIFO
+    unuseably slow to fail with systematic rule order search, just about OK with hash matching
+    fast to pass, slow to fail
+    failure does not give very helpful error reports, eg it fails a few thousand cycles after
+        the event and has ultimately matched no stimulus at all
+        maybe it should run again and try to get as far as it can?
     add a second implementation which stalls on repeated ID, no buffer
-    do some negative testing (ie a broken implementation)
-        can do this in the tester; modify a queue entry, or remove one or add an extra one
 '''
 
 from purple import Model, Leaf, Port, Generic, UnDefined, PurpleException, GuardFailed
@@ -50,8 +38,9 @@ from cli import args
 
 class Config(Config):
     suppress_implementation_checks = True
-    cycles_per_checksearch = 100
-#    cycles_per_checksearch = 5000
+    cycles_per_checksearch = 100 if args.quick else 1000
+    total_cycles = 100 if args.quick else 10000
+    cycles_to_bug_injection = 5500
 
 
 StimulusQueueNeedsMoreData = PurpleException.subclass('StimulusQueueNeedsMoreData')
@@ -76,6 +65,8 @@ def StimulusQueue(entry_cls):
             conceptually it has its store complete the whole time
             on pop(), the Model attribute gets replaced with a new object (so we can revert)
             will raise a StimulusQueueNeedsMoreData exception if it can't behave as if its store is complete
+            after this exception, it should normally be possible to add push more stimulus to the queue
+            (eg by running some more of a clocked simulation) and then continue
         '''
         param_entry_cls = frozen_entry_cls
         freeze_new_entries = (frozen_entry_cls is not entry_cls)
@@ -185,27 +176,33 @@ def StimulusOutput(entry_type):
 
 class Spec_Testbench(Model):
     'spec (atomic-rule) testbench with stimulus/checking using stimulus-queues'
-    new_req: StimulusInput[Types.RequesterPacket]
+    new_req_a: StimulusInput[Types.RequesterPacket]
+    new_req_b: StimulusInput[Types.RequesterPacket]
     req_to_completer: StimulusOutput[Types.CompleterPacket]
     comp_from_completer: StimulusInput[Types.CompleterPacket]
-    comp_to_requester: StimulusOutput[Types.RequesterPacket]
+    comp_to_requester_a: StimulusOutput[Types.RequesterPacket]
+    comp_to_requester_b: StimulusOutput[Types.RequesterPacket]
 
     dut: ReOrderBufferSpec[
-        _.request_in << new_req.port_for_spec_input,
+        _.request_in_a << new_req_a.port_for_spec_input,
+        _.request_in_b << new_req_b.port_for_spec_input,
         _.request_out >> req_to_completer.port_for_spec_output,
         _.completion_in << comp_from_completer.port_for_spec_input,
-        _.completion_out >> comp_to_requester.port_for_spec_output,
+        _.completion_out_a >> comp_to_requester_a.port_for_spec_output,
+        _.completion_out_b >> comp_to_requester_b.port_for_spec_output,
     ]
 
 
 class CheckerSimulator(RobImplSimulator):
     # extend clocked simulator to copy inputs and outputs after every cycle
+    # and enable it to run the spec (atomic-rule) simulator as a tester
     def __init__(self, impl_random_seed = None):
         print('elaborating spec testbench')
         self.spec_testbench = Spec_Testbench()
         print('elaborating implementation testbench')
         clks = dict(frequency_GHz = 1.0, name = 'clk')
         impl_testbench = Implementation_Testbench()
+        self.cycles = 0
         print('making implementation simulator')
         super().__init__(impl_testbench, clks, random_seed = impl_random_seed)
 
@@ -219,12 +216,14 @@ class CheckerSimulator(RobImplSimulator):
         impl = self.system
         return dict(
             inputs = (
-                (impl.req_out, spec.new_req),
+                (impl.req_out_a, spec.new_req_a),
+                (impl.req_out_b, spec.new_req_b),
                 (impl.comp_out, spec.comp_from_completer),
             ),
             outputs = (
                 (impl.req_in, spec.req_to_completer),
-                (impl.comp_in, spec.comp_to_requester),
+                (impl.comp_in_a, spec.comp_to_requester_a),
+                (impl.comp_in_b, spec.comp_to_requester_b),
             ),
         )
 
@@ -232,7 +231,6 @@ class CheckerSimulator(RobImplSimulator):
         # runs after every clock cycle
         sm = self.stimulus_mapping()
         for vr,sq in sm['inputs'] + sm['outputs']:
-#            if vr.valid and vr.ready and self.rand_gen.random() < 0.99995:
             PT = sq.param_entry_type
             if vr.valid and vr.ready:
                 packet = PT(payload = vr.payload, txn_id = vr.txn_id)
@@ -275,19 +273,18 @@ class CheckerSimulator(RobImplSimulator):
         num_rules = len(all_rules)
         num_invocations = 0
         num_hash_matches = 0
-        cycles = 0
 
         def run_implementation_from_checksearch(cycles_to_run):
             if isinstance(cycles_to_run, int):
                 print('** Running implementation testbench to get more stimulus **')
                 self.run(cycles = cycles_to_run, show_print = False, print_headers = False)
-                new_cycles = cycles + cycles_to_run
+                new_cycles = self.cycles + cycles_to_run
                 if new_cycles >= total_cycles:
                     # this will mean no further StimulusQueueNeedsMoreData exceptions
                     self.finalise_stimulus()
             else:
                 print('**', cycles_to_run, '**')
-                new_cycles = cycles
+                new_cycles = self.cycles
 
             print('  cycles simulated:', new_cycles, 'out of', total_cycles)
             print('  current number of unmatched outputs:', self.num_unmatched_outputs())
@@ -297,8 +294,8 @@ class CheckerSimulator(RobImplSimulator):
             print('  number of hash matches:', num_hash_matches)
             return new_cycles
 
-        cycles = run_implementation_from_checksearch(delta_cycles)
-        while cycles < total_cycles or self.num_unmatched_outputs() > 0:
+        self.cycles = run_implementation_from_checksearch(delta_cycles)
+        while self.cycles < total_cycles or self.num_unmatched_outputs() > 0:
             # find an unguarded rule without any assertions in it
             while index_history[-1] < num_rules:
                 rule = all_rules[index_history[-1]]
@@ -308,7 +305,7 @@ class CheckerSimulator(RobImplSimulator):
                     # check is false so that needs-more-data is trapped
                     result = rule.invoke(check = False, print_headers = False, show_print = False)
                     if result.exc_type is StimulusQueueNeedsMoreData:
-                        cycles = run_implementation_from_checksearch(delta_cycles)
+                        self.cycles = run_implementation_from_checksearch(delta_cycles)
                     else:
                         break
                 num_invocations += 1
@@ -349,5 +346,31 @@ class CheckerSimulator(RobImplSimulator):
 
 
 sim = CheckerSimulator()
-total_cycles = 100 if args.quick else 10000
-assert sim.checksearch(total_cycles, Config.cycles_per_checksearch)
+assert sim.checksearch(Config.total_cycles, Config.cycles_per_checksearch)
+
+
+if not args.quick:
+    class BugInjectingSimulator(CheckerSimulator):
+        def __init__(self, *a, **ka):
+            super().__init__(*a, **ka)
+            self.bug_injected = False
+
+        def copy_implementation_io_to_spec_testbench(self):
+            # runs after every clock cycle
+            # but self.cycles only updated after a bunch of cycles
+            # we will change an ID value, so the spec appears to see a bug in the implementation
+            # this doesn't affect the implementation testbench which runs as normal
+            sm = self.stimulus_mapping()
+            for vr,sq in sm['inputs'] + sm['outputs']:
+                PT = sq.param_entry_type
+                if vr.valid and vr.ready:
+                    if (not self.bug_injected) and self.cycles > Config.cycles_to_bug_injection:
+                        packet = PT(payload = vr.payload, txn_id = vr.txn_id ^ 1)
+                        self.bug_injected = True
+                    else:
+                        packet = PT(payload = vr.payload, txn_id = vr.txn_id)
+                    sq.queue.push(packet)
+
+    print('Now run with bug injection')
+    sim2 = BugInjectingSimulator()
+    assert not sim2.checksearch(Config.total_cycles, Config.cycles_per_checksearch)
