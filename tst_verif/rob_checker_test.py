@@ -27,11 +27,17 @@ Status:
     fast to pass, slow to fail
     failure does not give very helpful error reports, eg it fails a few thousand cycles after
         the event and has ultimately matched no stimulus at all
-        maybe it should run again and try to get as far as it can?
+        or can it report the maximum progress it was able to make for every output stim-queue?
+            this would be easy
+            would tell us the first unmatchable output
+    requirement for causality
+        will this reduce time-to-fail?
+        not pursuing inputs which happen after the next set of outputs
+        this is implemented (commented out) but does not work - leads to spurious failures
     add a second implementation which stalls on repeated ID, no buffer
 '''
 
-from purple import Model, Leaf, Port, Generic, UnDefined, PurpleException, GuardFailed
+from purple import Model, Leaf, Port, Generic, UnDefined, PurpleException, GuardFailed, Integer
 from rob_spec_test import ReOrderBufferSpec
 from rob_implementation_test import Config, Types, Implementation_Testbench, RobImplSimulator
 from cli import args
@@ -78,6 +84,7 @@ def StimulusQueue(entry_cls):
                 self.owner = owner
                 self.name = name
                 self.store_is_complete = False
+                self.max_read_pointer = 0
                 self.store = list()
 
         def __init__(self, read_pointer, shared_state):
@@ -99,7 +106,7 @@ def StimulusQueue(entry_cls):
         def __len__(self):
             return len(self.shared_state.store) - self.read_pointer
 
-        def push(self, value, store_is_complete = False):
+        def push(self, value, time_ps, store_is_complete = False):
             ss = self.shared_state
             assert not ss.store_is_complete
             if self.entry_cls_is_leaf:
@@ -107,21 +114,32 @@ def StimulusQueue(entry_cls):
                 v_frozen = leaf._dp_check_and_cast_including_undef(ss.owner, ss.name, value)
             else:
                 v_frozen = value.freeze() if self.freeze_new_entries else value
-            ss.store.append(v_frozen)
+
+            # require in-order stimulus capture
+            assert (not ss.store) or time_ps >= ss.store[-1][1]
+            ss.store.append((v_frozen, time_ps))
             ss.store_is_complete = store_is_complete
 
         def completed(self):
             self.shared_state.store_is_complete = True
 
+        def is_completed(self):
+            return self.shared_state.store_is_complete
+
         def peek(self):
             ss = self.shared_state
             have_data = self.read_pointer < len(ss.store)
-            (GuardFailed if ss.store_is_complete else StimulusQueueNeedsMoreData).insist(have_data)
-            return ss.store[self.read_pointer]
+            if ss.store_is_complete:
+                GuardFailed.insist(have_data)
+            else:
+                StimulusQueueNeedsMoreData.insist(have_data)
+            data, time_ps = ss.store[self.read_pointer]
+            return data, time_ps
 
         def pop(self):
             rv = self.peek()
             ss = self.shared_state
+            ss.max_read_pointer = max(self.read_pointer, ss.max_read_pointer)
             new_object = StimulusQueueObject(self.read_pointer + 1, ss)
             setattr(ss.owner, ss.name, new_object)
             return rv
@@ -157,7 +175,10 @@ def StimulusInput(entry_type):
         queue: StimulusQueue[entry_type]
         port_for_spec_input: Port[entry_type] << get_next
         def get_next(self):
-            return self.queue.pop()
+            data,time_ps = self.queue.pop()
+            # don't continue with this input if we're only checking outputs that happened before it
+#            self.guard(self._dp_top_component.max_next_stimulus_output_time >= time_ps)
+            return data
     return InputClass
 
 @Generic
@@ -170,11 +191,21 @@ def StimulusOutput(entry_type):
         queue: StimulusQueue[entry_type]
         port_for_spec_output: Port[entry_type] >> check_next
         def check_next(self, entry):
-            self.guard(self.queue.pop() == entry)
+            data,_ = self.queue.pop()
+            self.guard(data == entry)
+            if len(self.queue) > 0 or not self.queue.is_completed():
+                # find the time of the next check; no need to run any input later than this
+                _,time_ps = self.queue.peek()
+                top = self._dp_top_component
+                if time_ps > top.max_next_stimulus_output_time:
+                    top.max_next_stimulus_output_time = time_ps
     return OutputClass
 
+class StimulusIOTestbenchBase(Model):
+    max_next_stimulus_output_time: Integer[...] = 0
 
-class Spec_Testbench(Model):
+
+class Spec_Testbench(StimulusIOTestbenchBase):
     'spec (atomic-rule) testbench with stimulus/checking using stimulus-queues'
     new_req_a: StimulusInput[Types.RequesterPacket]
     new_req_b: StimulusInput[Types.RequesterPacket]
@@ -234,7 +265,7 @@ class CheckerSimulator(RobImplSimulator):
             PT = sq.param_entry_type
             if vr.valid and vr.ready:
                 packet = PT(payload = vr.payload, txn_id = vr.txn_id)
-                sq.queue.push(packet)
+                sq.queue.push(packet, self.time_ps)
 
     def num_unmatched_outputs(self):
         return sum(len(sq.queue) for _,sq in self.stimulus_mapping()['outputs'])
@@ -243,6 +274,28 @@ class CheckerSimulator(RobImplSimulator):
         sm = self.stimulus_mapping()
         for _,sq in sm['inputs'] + sm['outputs']:
             sq.queue.completed()
+
+    def report_after_fail(self):
+        print('Output Stimulus:')
+        earliest_nomatch = None
+        for _,sq in self.stimulus_mapping()['outputs']:
+            ss = sq.queue.shared_state
+            last_match, last_match_t = ss.store[ss.max_read_pointer]
+            print('  last match', '.'.join(sq.name), last_match_t, 'ps:', last_match)
+            if 1 + len(ss.store) > ss.max_read_pointer:
+                first_nomatch, first_nomatch_t = ss.store[1 + ss.max_read_pointer]
+                print('  first unmatchable     ', first_nomatch_t, 'ps:', first_nomatch)
+                if earliest_nomatch is None or earliest_nomatch > first_nomatch_t:
+                    earliest_nomatch = first_nomatch_t
+        print('Input Stimulus before', earliest_nomatch, 'ps')
+        for _,sq in self.stimulus_mapping()['inputs']:
+            ss = sq.queue.shared_state
+            print('   ', '.'.join(sq.name))
+            for i,(v,t) in enumerate(ss.store):
+                if t > earliest_nomatch:
+                    break
+                note = 'UNUSED' if i > ss.max_read_pointer else ''
+                print('      ', t, 'ps:', v, note)
 
     def checksearch(self, total_cycles, delta_cycles):
         '''
@@ -315,7 +368,7 @@ class CheckerSimulator(RobImplSimulator):
                     # state already reverted by rule.invoke()
                     pass
                 elif result.exc_type:
-                    raise
+                    raise result.exc_value
 
                 elif spec_testbench._dp_model_state_hash in failing_state_hashes:
                     # we have been to this spec state before and we know it doesn't go anywhere useful
@@ -334,6 +387,7 @@ class CheckerSimulator(RobImplSimulator):
                 # history and continue searching from where we were
                 if len(rule_history) == 0:
                     run_implementation_from_checksearch('Failed to find a rule sequence')
+                    self.report_after_fail()
                     return False
 
                 failed_rule = rule_history.pop(-1)
@@ -369,7 +423,7 @@ if not args.quick:
                         self.bug_injected = True
                     else:
                         packet = PT(payload = vr.payload, txn_id = vr.txn_id)
-                    sq.queue.push(packet)
+                    sq.queue.push(packet, self.time_ps)
 
     print('Now run with bug injection')
     sim2 = BugInjectingSimulator()
