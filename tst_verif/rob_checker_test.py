@@ -25,15 +25,14 @@ Notes:
 Status:
     unuseably slow to fail with systematic rule order search, just about OK with hash matching
     fast to pass, slow to fail
-    failure does not give very helpful error reports, eg it fails a few thousand cycles after
-        the event and has ultimately matched no stimulus at all
-        or can it report the maximum progress it was able to make for every output stim-queue?
-            this would be easy
-            would tell us the first unmatchable output
     requirement for causality
         will this reduce time-to-fail?
         not pursuing inputs which happen after the next set of outputs
-        this is implemented (commented out) but does not work - leads to spurious failures
+        this is implemented (commented out) but does not work
+            cautious approach maybe limited value: allow input if any output is later
+            may have 2 bugs: sometimes cannot find a match during sim; sometimes runs to end and then cannot
+        more aggresive not implemented
+            allow input only if _all_ outputs are later
     add a second implementation which stalls on repeated ID, no buffer
 '''
 
@@ -47,6 +46,7 @@ class Config(Config):
     cycles_per_checksearch = 100 if args.quick else 1000
     total_cycles = 100 if args.quick else 10000
     cycles_to_bug_injection = 5500
+    num_packets_to_report = 16
 
 
 StimulusQueueNeedsMoreData = PurpleException.subclass('StimulusQueueNeedsMoreData')
@@ -61,18 +61,18 @@ def StimulusQueue(entry_cls):
     peek() shows oldest
     pop() returns oldest and hides it; can be reverted by un-hiding
     __len__() exists but does not revert because affected by push() as well as pop()
+
+    quasi-immutable model attributes of type StimulusQueueObject[entry-cls]:
+        conceptually the objects store is complete the whole time
+        on pop(), the Model attribute gets replaced with a new object (so we can revert)
+        will raise a StimulusQueueNeedsMoreData exception if it can't behave as if its store is complete
+        after this exception, it should normally be possible to add push more stimulus to the queue
+        (eg by running some more of a clocked simulation) and then continue
     '''
     frozen_entry_cls = entry_cls._dp_make_frozen_class()
 
     class StimulusQueueObject:
         ''' the Model attribute for a StimulusQueue[] Leaf state element is an object of this class
-
-        quasi-immutable:
-            conceptually it has its store complete the whole time
-            on pop(), the Model attribute gets replaced with a new object (so we can revert)
-            will raise a StimulusQueueNeedsMoreData exception if it can't behave as if its store is complete
-            after this exception, it should normally be possible to add push more stimulus to the queue
-            (eg by running some more of a clocked simulation) and then continue
         '''
         param_entry_cls = frozen_entry_cls
         freeze_new_entries = (frozen_entry_cls is not entry_cls)
@@ -123,14 +123,14 @@ def StimulusQueue(entry_cls):
         def completed(self):
             self.shared_state.store_is_complete = True
 
-        def is_completed(self):
-            return self.shared_state.store_is_complete
-
-        def peek(self):
+        def peek(self, no_guard = False):
             ss = self.shared_state
             have_data = self.read_pointer < len(ss.store)
             if ss.store_is_complete:
-                GuardFailed.insist(have_data)
+                if no_guard:
+                    return None, None
+                else:
+                    GuardFailed.insist(have_data)
             else:
                 StimulusQueueNeedsMoreData.insist(have_data)
             data, time_ps = ss.store[self.read_pointer]
@@ -177,7 +177,7 @@ def StimulusInput(entry_type):
         def get_next(self):
             data,time_ps = self.queue.pop()
             # don't continue with this input if we're only checking outputs that happened before it
-#            self.guard(self._dp_top_component.max_next_stimulus_output_time >= time_ps)
+            self.guard(self._dp_top_component.max_next_stimulus_output_time >= time_ps)
             return data
     return InputClass
 
@@ -193,9 +193,10 @@ def StimulusOutput(entry_type):
         def check_next(self, entry):
             data,_ = self.queue.pop()
             self.guard(data == entry)
-            if len(self.queue) > 0 or not self.queue.is_completed():
-                # find the time of the next check; no need to run any input later than this
-                _,time_ps = self.queue.peek()
+
+            # find the time of the next check; no need to run any input later than this
+            _,time_ps = self.queue.peek(no_guard = True)
+            if time_ps is not None:
                 top = self._dp_top_component
                 if time_ps > top.max_next_stimulus_output_time:
                     top.max_next_stimulus_output_time = time_ps
@@ -282,19 +283,22 @@ class CheckerSimulator(RobImplSimulator):
             ss = sq.queue.shared_state
             last_match, last_match_t = ss.store[ss.max_read_pointer]
             print('  last match', '.'.join(sq.name), last_match_t, 'ps:', last_match)
-            if 1 + len(ss.store) > ss.max_read_pointer:
+            if len(ss.store) > 1 + ss.max_read_pointer:
                 first_nomatch, first_nomatch_t = ss.store[1 + ss.max_read_pointer]
                 print('  first unmatchable     ', first_nomatch_t, 'ps:', first_nomatch)
                 if earliest_nomatch is None or earliest_nomatch > first_nomatch_t:
                     earliest_nomatch = first_nomatch_t
+
         print('Input Stimulus before', earliest_nomatch, 'ps')
         for _,sq in self.stimulus_mapping()['inputs']:
             ss = sq.queue.shared_state
             print('   ', '.'.join(sq.name))
-            for i,(v,t) in enumerate(ss.store):
-                if t > earliest_nomatch:
-                    break
-                note = 'UNUSED' if i > ss.max_read_pointer else ''
+            vt = [
+                (v, t, 'UNUSED' if i > ss.max_read_pointer else '')
+                for i,(v,t) in enumerate(ss.store)
+                if t < earliest_nomatch
+            ]
+            for v,t,note in vt[-Config.num_packets_to_report:]:
                 print('      ', t, 'ps:', v, note)
 
     def checksearch(self, total_cycles, delta_cycles):
