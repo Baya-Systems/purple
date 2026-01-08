@@ -28,11 +28,15 @@ Status:
     requirement for causality
         will this reduce time-to-fail?
         not pursuing inputs which happen after the next set of outputs
-        this is implemented (commented out) but does not work
+        have re-jigged the classes so that it is easier to create a loop test for every input
+            instead of trying to maintain a state variable
+        this does not work yet
             cautious approach maybe limited value: allow input if any output is later
-            may have 2 bugs: sometimes cannot find a match during sim; sometimes runs to end and then cannot
         more aggresive not implemented
             allow input only if _all_ outputs are later
+            this might mean we reject _all_ outputs but the earliest one
+    convert the checksearch to be a generator so that implementation sim can run in parallel
+        at least logically (without threading)
     add a second implementation which stalls on repeated ID, no buffer
 '''
 
@@ -46,7 +50,6 @@ class Config(Config):
     cycles_per_checksearch = 100 if args.quick else 1000
     total_cycles = 100 if args.quick else 10000
     cycles_to_bug_injection = 5500
-    num_packets_to_report = 16
 
 
 StimulusQueueNeedsMoreData = PurpleException.subclass('StimulusQueueNeedsMoreData')
@@ -177,7 +180,7 @@ def StimulusInput(entry_type):
         def get_next(self):
             data,time_ps = self.queue.pop()
             # don't continue with this input if we're only checking outputs that happened before it
-            self.guard(self._dp_top_component.max_next_stimulus_output_time >= time_ps)
+#            self.guard(self._dp_top_component.max_next_stimulus_output_time >= time_ps)
             return data
     return InputClass
 
@@ -195,18 +198,61 @@ def StimulusOutput(entry_type):
             self.guard(data == entry)
 
             # find the time of the next check; no need to run any input later than this
-            _,time_ps = self.queue.peek(no_guard = True)
-            if time_ps is not None:
-                top = self._dp_top_component
-                if time_ps > top.max_next_stimulus_output_time:
-                    top.max_next_stimulus_output_time = time_ps
+#            _,time_ps = self.queue.peek(no_guard = True)
+#            if time_ps is not None:
+#                top = self._dp_top_component
+#                if time_ps > top.max_next_stimulus_output_time:
+#                    top.max_next_stimulus_output_time = time_ps
     return OutputClass
 
+
 class StimulusIOTestbenchBase(Model):
-    max_next_stimulus_output_time: Integer[...] = 0
+    num_packets_to_report = 16
+
+    def stimulus_input_mapping(self, implementation = None):
+        raise TypeError('override stimulus_input_mapping() in model-specific testbench class')
+
+    def stimulus_output_mapping(self, implementation = None):
+        raise TypeError('override stimulus_output_mapping() in model-specific testbench class')
+
+    def copy_implementation_io(self, implementation, time_ps):
+        raise TypeError('override copy_implementation_io_to_spec_testbench() in model-specific testbench class')
+
+    def num_unmatched_outputs(self):
+        return sum(len(sq.queue) for _,sq in self.stimulus_output_mapping())
+
+    def finalise_all_stimulus(self):
+        sm = self.stimulus_input_mapping() + self.stimulus_output_mapping()
+        for _,sq in sm:
+            sq.queue.completed()
+
+    def report_after_fail(self):
+        print('Output Stimulus:')
+        earliest_nomatch = None
+        for _,sq in self.stimulus_output_mapping():
+            ss = sq.queue.shared_state
+            last_match, last_match_t = ss.store[ss.max_read_pointer]
+            print('  last match', '.'.join(sq.name), last_match_t, 'ps:', last_match)
+            if len(ss.store) > 1 + ss.max_read_pointer:
+                first_nomatch, first_nomatch_t = ss.store[1 + ss.max_read_pointer]
+                print('  first unmatchable     ', first_nomatch_t, 'ps:', first_nomatch)
+                if earliest_nomatch is None or earliest_nomatch > first_nomatch_t:
+                    earliest_nomatch = first_nomatch_t
+
+        print('Input Stimulus before', earliest_nomatch, 'ps')
+        for _,sq in self.stimulus_input_mapping():
+            ss = sq.queue.shared_state
+            print('   ', '.'.join(sq.name))
+            vt = [
+                (v, t, 'UNUSED' if i > ss.max_read_pointer else '')
+                for i,(v,t) in enumerate(ss.store)
+                if t < earliest_nomatch
+            ]
+            for v,t,note in vt[-self.num_packets_to_report:]:
+                print('      ', t, 'ps:', v, note)
 
 
-class Spec_Testbench(StimulusIOTestbenchBase):
+class Rob_SpecChecker_Testbench(StimulusIOTestbenchBase):
     'spec (atomic-rule) testbench with stimulus/checking using stimulus-queues'
     new_req_a: StimulusInput[Types.RequesterPacket]
     new_req_b: StimulusInput[Types.RequesterPacket]
@@ -224,13 +270,42 @@ class Spec_Testbench(StimulusIOTestbenchBase):
         _.completion_out_b >> comp_to_requester_b.port_for_spec_output,
     ]
 
+    def stimulus_input_mapping(self, implementation =  None):
+        return (
+            (getattr(implementation, 'req_out_a', None), self.new_req_a),
+            (getattr(implementation, 'req_out_b', None), self.new_req_b),
+            (getattr(implementation, 'comp_out', None), self.comp_from_completer),
+        )
+
+    def stimulus_output_mapping(self, implementation = None):
+        return (
+            (getattr(implementation, 'req_in', None), self.req_to_completer),
+            (getattr(implementation, 'comp_in_a', None), self.comp_to_requester_a),
+            (getattr(implementation, 'comp_in_b', None), self.comp_to_requester_b),
+        )
+
+    def copy_implementation_io(self, implementation, time_ps, inject_bug = False):
+        # runs after every clock cycle
+        sm = self.stimulus_input_mapping(implementation) + self.stimulus_output_mapping(implementation)
+        bug = False
+        for vr,sq in sm:
+            PT = sq.param_entry_type
+            if vr.valid and vr.ready:
+                if inject_bug and not bug:
+                    packet = PT(payload = vr.payload, txn_id = vr.txn_id ^ 1)
+                    bug = True
+                else:
+                    packet = PT(payload = vr.payload, txn_id = vr.txn_id)
+                sq.queue.push(packet, time_ps)
+        return bug
+
 
 class CheckerSimulator(RobImplSimulator):
     # extend clocked simulator to copy inputs and outputs after every cycle
     # and enable it to run the spec (atomic-rule) simulator as a tester
     def __init__(self, impl_random_seed = None):
         print('elaborating spec testbench')
-        self.spec_testbench = Spec_Testbench()
+        self.spec_testbench = Rob_SpecChecker_Testbench()
         print('elaborating implementation testbench')
         clks = dict(frequency_GHz = 1.0, name = 'clk')
         impl_testbench = Implementation_Testbench()
@@ -239,67 +314,15 @@ class CheckerSimulator(RobImplSimulator):
         super().__init__(impl_testbench, clks, random_seed = impl_random_seed)
 
     def run_one_step(self, final_time_ps, show_print, print_headers):
-        for _ in super().run_one_step(final_time_ps, show_print, print_headers):
-            self.copy_implementation_io_to_spec_testbench()
+        while True:
+            clock, clock_name = min(self.clocks)
+            if clock.next_event_time_ps >= final_time_ps:
+                break
+            self.time_ps = clock.next_event_time_ps
+            self.spec_testbench.copy_implementation_io(self.system, self.time_ps)
+            selected_rules = self.select_rules(clock, clock_name)
+            clock.event(selected_rules, show_print, print_headers)
             yield
-
-    def stimulus_mapping(self):
-        spec = self.spec_testbench
-        impl = self.system
-        return dict(
-            inputs = (
-                (impl.req_out_a, spec.new_req_a),
-                (impl.req_out_b, spec.new_req_b),
-                (impl.comp_out, spec.comp_from_completer),
-            ),
-            outputs = (
-                (impl.req_in, spec.req_to_completer),
-                (impl.comp_in_a, spec.comp_to_requester_a),
-                (impl.comp_in_b, spec.comp_to_requester_b),
-            ),
-        )
-
-    def copy_implementation_io_to_spec_testbench(self):
-        # runs after every clock cycle
-        sm = self.stimulus_mapping()
-        for vr,sq in sm['inputs'] + sm['outputs']:
-            PT = sq.param_entry_type
-            if vr.valid and vr.ready:
-                packet = PT(payload = vr.payload, txn_id = vr.txn_id)
-                sq.queue.push(packet, self.time_ps)
-
-    def num_unmatched_outputs(self):
-        return sum(len(sq.queue) for _,sq in self.stimulus_mapping()['outputs'])
-
-    def finalise_stimulus(self):
-        sm = self.stimulus_mapping()
-        for _,sq in sm['inputs'] + sm['outputs']:
-            sq.queue.completed()
-
-    def report_after_fail(self):
-        print('Output Stimulus:')
-        earliest_nomatch = None
-        for _,sq in self.stimulus_mapping()['outputs']:
-            ss = sq.queue.shared_state
-            last_match, last_match_t = ss.store[ss.max_read_pointer]
-            print('  last match', '.'.join(sq.name), last_match_t, 'ps:', last_match)
-            if len(ss.store) > 1 + ss.max_read_pointer:
-                first_nomatch, first_nomatch_t = ss.store[1 + ss.max_read_pointer]
-                print('  first unmatchable     ', first_nomatch_t, 'ps:', first_nomatch)
-                if earliest_nomatch is None or earliest_nomatch > first_nomatch_t:
-                    earliest_nomatch = first_nomatch_t
-
-        print('Input Stimulus before', earliest_nomatch, 'ps')
-        for _,sq in self.stimulus_mapping()['inputs']:
-            ss = sq.queue.shared_state
-            print('   ', '.'.join(sq.name))
-            vt = [
-                (v, t, 'UNUSED' if i > ss.max_read_pointer else '')
-                for i,(v,t) in enumerate(ss.store)
-                if t < earliest_nomatch
-            ]
-            for v,t,note in vt[-Config.num_packets_to_report:]:
-                print('      ', t, 'ps:', v, note)
 
     def checksearch(self, total_cycles, delta_cycles):
         '''
@@ -322,37 +345,38 @@ class CheckerSimulator(RobImplSimulator):
             exhaustively tested state
             this is a bit risky, because hashes can in theory match for different states
         '''
-        spec_testbench = self.spec_testbench
+        spec = self.spec_testbench
+        impl = self.system
         rule_history = []
         index_history = [0]
         failing_state_hashes = set()
-        all_rules = tuple(self.spec_testbench.find_rule())
+        all_rules = tuple(spec.find_rule())
         num_rules = len(all_rules)
         num_invocations = 0
         num_hash_matches = 0
 
-        def run_implementation_from_checksearch(cycles_to_run):
-            if isinstance(cycles_to_run, int):
+        def run_implementation_from_checksearch(cycles_to_run = 0, title = ''):
+            if cycles_to_run > 0:
                 print('** Running implementation testbench to get more stimulus **')
                 self.run(cycles = cycles_to_run, show_print = False, print_headers = False)
                 new_cycles = self.cycles + cycles_to_run
                 if new_cycles >= total_cycles:
                     # this will mean no further StimulusQueueNeedsMoreData exceptions
-                    self.finalise_stimulus()
+                    spec.finalise_all_stimulus()
             else:
-                print('**', cycles_to_run, '**')
+                print('**', title, '**')
                 new_cycles = self.cycles
 
             print('  cycles simulated:', new_cycles, 'out of', total_cycles)
-            print('  current number of unmatched outputs:', self.num_unmatched_outputs())
+            print('  current number of unmatched outputs:', spec.num_unmatched_outputs())
             print('  number of atomic rules in current history:', len(rule_history))
             print('  number of atomic rules tested:', num_invocations)
             print('  number of failing states found:', len(failing_state_hashes))
             print('  number of hash matches:', num_hash_matches)
             return new_cycles
 
-        self.cycles = run_implementation_from_checksearch(delta_cycles)
-        while self.cycles < total_cycles or self.num_unmatched_outputs() > 0:
+        self.cycles = run_implementation_from_checksearch(cycles_to_run = delta_cycles)
+        while self.cycles < total_cycles or spec.num_unmatched_outputs() > 0:
             # find an unguarded rule without any assertions in it
             while index_history[-1] < num_rules:
                 rule = all_rules[index_history[-1]]
@@ -360,9 +384,9 @@ class CheckerSimulator(RobImplSimulator):
 
                 while True:
                     # check is false so that needs-more-data is trapped
-                    result = rule.invoke(check = False, print_headers = False, show_print = False)
+                    result = rule.invoke(check = False, print_headers = True, show_print = True)
                     if result.exc_type is StimulusQueueNeedsMoreData:
-                        self.cycles = run_implementation_from_checksearch(delta_cycles)
+                        self.cycles = run_implementation_from_checksearch(cycles_to_run = delta_cycles)
                     else:
                         break
                 num_invocations += 1
@@ -371,10 +395,11 @@ class CheckerSimulator(RobImplSimulator):
                     # rule is not runnable (does not change spec state) so not useful
                     # state already reverted by rule.invoke()
                     pass
+
                 elif result.exc_type:
                     raise result.exc_value
 
-                elif spec_testbench._dp_model_state_hash in failing_state_hashes:
+                elif spec._dp_model_state_hash in failing_state_hashes:
                     # we have been to this spec state before and we know it doesn't go anywhere useful
                     num_hash_matches += 1
                     result.revert_state()
@@ -390,16 +415,16 @@ class CheckerSimulator(RobImplSimulator):
                 # no plausible rule can be found, remove the newest rule from the
                 # history and continue searching from where we were
                 if len(rule_history) == 0:
-                    run_implementation_from_checksearch('Failed to find a rule sequence')
-                    self.report_after_fail()
+                    run_implementation_from_checksearch(title = 'Failed to find a rule sequence')
+                    spec.report_after_fail()
                     return False
 
                 failed_rule = rule_history.pop(-1)
                 index_history.pop(-1)
-                failing_state_hashes.add(spec_testbench._dp_model_state_hash)
+                failing_state_hashes.add(spec._dp_model_state_hash)
                 failed_rule.revert_state()
 
-        run_implementation_from_checksearch('Found a rule sequence')
+        run_implementation_from_checksearch(title = 'Found a rule sequence')
         return True
 
 
@@ -413,22 +438,20 @@ if not args.quick:
             super().__init__(*a, **ka)
             self.bug_injected = False
 
-        def copy_implementation_io_to_spec_testbench(self):
-            # runs after every clock cycle
-            # but self.cycles only updated after a bunch of cycles
-            # we will change an ID value, so the spec appears to see a bug in the implementation
-            # this doesn't affect the implementation testbench which runs as normal
-            sm = self.stimulus_mapping()
-            for vr,sq in sm['inputs'] + sm['outputs']:
-                PT = sq.param_entry_type
-                if vr.valid and vr.ready:
-                    if (not self.bug_injected) and self.cycles > Config.cycles_to_bug_injection:
-                        packet = PT(payload = vr.payload, txn_id = vr.txn_id ^ 1)
-                        self.bug_injected = True
-                    else:
-                        packet = PT(payload = vr.payload, txn_id = vr.txn_id)
-                    sq.queue.push(packet, self.time_ps)
+        def run_one_step(self, final_time_ps, show_print, print_headers):
+            while True:
+                clock, clock_name = min(self.clocks)
+                if clock.next_event_time_ps >= final_time_ps:
+                    break
+                self.time_ps = clock.next_event_time_ps
+                inject_bug = (not self.bug_injected) and self.cycles > Config.cycles_to_bug_injection
+                self.bug_injected = \
+                    self.spec_testbench.copy_implementation_io(self.system, self.time_ps, inject_bug)
+                selected_rules = self.select_rules(clock, clock_name)
+                clock.event(selected_rules, show_print, print_headers)
+                yield
 
     print('Now run with bug injection')
     sim2 = BugInjectingSimulator()
-    assert not sim2.checksearch(Config.total_cycles, Config.cycles_per_checksearch)
+    result = sim2.checksearch(Config.total_cycles, Config.cycles_per_checksearch)
+    assert not result

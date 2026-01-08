@@ -19,12 +19,18 @@ FIXME
             b: SomeType
             end_of_elaboration: make_b
             def make_b(self): self.b = blah
+        can we have a factory option for initial values?  see below array-index-initialiser
+        class X(Model):
+            b: SomeType = Initialiser[make_b]
+            def make_b(self): return blah
+    clocked simulator should include time in rule printout headers
     invariants
     very common case is to have a variable that may be invalid or valid
         so create a convenient way to do this
         class A(Model):
-            x: MyRecord | Const[None] # needs if x is None
-            y: Optional[MyRecord] # same but has a method y.is_valid()
+            x: MyRecord | Const[None] # needs "if x is None"
+            y: Optional[MyRecord] # same but has a method y.is_valid() which may not fly for Leaf
+            z: Optional[MyRecordorLeaf] # syntactic sugar for Const[None]
     rules with parameters get very slow
         rather than generating a separate rule for each parameter set during elaboration
         choose a parameter set after rule selection, by randomisation of record/leaf
