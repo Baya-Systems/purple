@@ -23,20 +23,19 @@ Notes:
     make possible/necessary
 
 Status:
-    unuseably slow to fail with systematic rule order search, just about OK with hash matching
     fast to pass, slow to fail
+    unuseably slow to fail with systematic rule order search
+    just about OK with hash matching
     requirement for causality
-        will this reduce time-to-fail?
-        not pursuing inputs which happen after the next set of outputs
-        have re-jigged the classes so that it is easier to create a loop test for every input
-            instead of trying to maintain a state variable
-        this does not work yet
-            cautious approach maybe limited value: allow input if any output is later
-        more aggresive not implemented
-            allow input only if _all_ outputs are later
-            this might mean we reject _all_ outputs but the earliest one
+        cautious approach: allow input if any output is later
+        more aggresive: allow input if all outputs are later
+        either gives a big improvement in time-to-fail
     convert the checksearch to be a generator so that implementation sim can run in parallel
         at least logically (without threading)
+    split into generic and specific-to-rob
+    add to Makefile
+    add a doc
+    remove from __init__
     add a second implementation which stalls on repeated ID, no buffer
 '''
 
@@ -47,9 +46,9 @@ from cli import args
 
 class Config(Config):
     suppress_implementation_checks = True
-    cycles_per_checksearch = 100 if args.quick else 1000
-    total_cycles = 100 if args.quick else 10000
-    cycles_to_bug_injection = 5500
+    ps_per_checksearch = (100 if args.quick else 1000) * 1000
+    total_ps = (100 if args.quick else 10000) * 1000
+    ps_to_bug_injection = 5500 * 1000
 
 
 StimulusQueueNeedsMoreData = PurpleException.subclass('StimulusQueueNeedsMoreData')
@@ -126,18 +125,14 @@ def StimulusQueue(entry_cls):
         def completed(self):
             self.shared_state.store_is_complete = True
 
-        def peek(self, no_guard = False):
+        def peek(self):
             ss = self.shared_state
             have_data = self.read_pointer < len(ss.store)
             if ss.store_is_complete:
-                if no_guard:
-                    return None, None
-                else:
-                    GuardFailed.insist(have_data)
+                GuardFailed.insist(have_data)
             else:
                 StimulusQueueNeedsMoreData.insist(have_data)
-            data, time_ps = ss.store[self.read_pointer]
-            return data, time_ps
+            return ss.store[self.read_pointer]
 
         def pop(self):
             rv = self.peek()
@@ -180,7 +175,8 @@ def StimulusInput(entry_type):
         def get_next(self):
             data,time_ps = self.queue.pop()
             # don't continue with this input if we're only checking outputs that happened before it
-#            self.guard(self._dp_top_component.max_next_stimulus_output_time >= time_ps)
+            self.guard(self._dp_top_component.before_next_output(time_ps))
+#            self.guard(self._dp_top_component.before_all_outputs(time_ps))
             return data
     return InputClass
 
@@ -196,23 +192,28 @@ def StimulusOutput(entry_type):
         def check_next(self, entry):
             data,_ = self.queue.pop()
             self.guard(data == entry)
-
-            # find the time of the next check; no need to run any input later than this
-#            _,time_ps = self.queue.peek(no_guard = True)
-#            if time_ps is not None:
-#                top = self._dp_top_component
-#                if time_ps > top.max_next_stimulus_output_time:
-#                    top.max_next_stimulus_output_time = time_ps
     return OutputClass
 
 
 class StimulusIOTestbenchBase(Model):
     num_packets_to_report = 16
 
+    def before_next_output(self, time_ps):
+        sq = (i.queue for _,i in self.stimulus_input_mapping())
+        return all((q.shared_state.store_is_complete or time_ps <= q.peek()[1]) for q in sq)
+
+    def before_all_outputs(self, time_ps):
+        sq = (i.queue for _,i in self.stimulus_input_mapping())
+        return not any(((not q.shared_state.store_is_complete) and time_ps > q.peek()[1]) for q in sq)
+
     def stimulus_input_mapping(self, implementation = None):
+        # return a tuple of (ref_to_something_in_implementation_testbench, StimulusInput)
+        # unless implementation is None in which case (None, StimulusInput)
         raise TypeError('override stimulus_input_mapping() in model-specific testbench class')
 
     def stimulus_output_mapping(self, implementation = None):
+        # return a tuple of (ref_to_something_in_implementation_testbench, StimulusOutput)
+        # unless implementation is None in which case (None, StimulusInput)
         raise TypeError('override stimulus_output_mapping() in model-specific testbench class')
 
     def copy_implementation_io(self, implementation, time_ps):
@@ -301,15 +302,14 @@ class Rob_SpecChecker_Testbench(StimulusIOTestbenchBase):
 
 
 class CheckerSimulator(RobImplSimulator):
-    # extend clocked simulator to copy inputs and outputs after every cycle
-    # and enable it to run the spec (atomic-rule) simulator as a tester
+    # extends clocked simulator to copy inputs and outputs after every cycle
+    # and enables it to run the spec (atomic-rule) simulator as a tester
     def __init__(self, impl_random_seed = None):
         print('elaborating spec testbench')
         self.spec_testbench = Rob_SpecChecker_Testbench()
         print('elaborating implementation testbench')
         clks = dict(frequency_GHz = 1.0, name = 'clk')
         impl_testbench = Implementation_Testbench()
-        self.cycles = 0
         print('making implementation simulator')
         super().__init__(impl_testbench, clks, random_seed = impl_random_seed)
 
@@ -324,7 +324,7 @@ class CheckerSimulator(RobImplSimulator):
             clock.event(selected_rules, show_print, print_headers)
             yield
 
-    def checksearch(self, total_cycles, delta_cycles):
+    def checksearch(self, total_ps, delta_ps):
         '''
         search for a sequence of rules by which the spec model can
         match the inputs and outputs of the implementation model
@@ -355,28 +355,26 @@ class CheckerSimulator(RobImplSimulator):
         num_invocations = 0
         num_hash_matches = 0
 
-        def run_implementation_from_checksearch(cycles_to_run = 0, title = ''):
-            if cycles_to_run > 0:
+        def run_implementation_from_checksearch(duration_ps = 0, title = ''):
+            if duration_ps > 0:
                 print('** Running implementation testbench to get more stimulus **')
-                self.run(cycles = cycles_to_run, show_print = False, print_headers = False)
-                new_cycles = self.cycles + cycles_to_run
-                if new_cycles >= total_cycles:
+                self.run(duration_ps = duration_ps, show_print = False, print_headers = False)
+                if self.time_ps >= total_ps:
                     # this will mean no further StimulusQueueNeedsMoreData exceptions
                     spec.finalise_all_stimulus()
             else:
                 print('**', title, '**')
-                new_cycles = self.cycles
 
-            print('  cycles simulated:', new_cycles, 'out of', total_cycles)
+            print('  time simulated (ns):', self.time_ps / 1000, 'out of', total_ps / 1000)
             print('  current number of unmatched outputs:', spec.num_unmatched_outputs())
             print('  number of atomic rules in current history:', len(rule_history))
             print('  number of atomic rules tested:', num_invocations)
             print('  number of failing states found:', len(failing_state_hashes))
             print('  number of hash matches:', num_hash_matches)
-            return new_cycles
 
-        self.cycles = run_implementation_from_checksearch(cycles_to_run = delta_cycles)
-        while self.cycles < total_cycles or spec.num_unmatched_outputs() > 0:
+        run_implementation_from_checksearch(duration_ps = delta_ps)
+        desired_stop_time_ps = delta_ps
+        while self.time_ps < total_ps or spec.num_unmatched_outputs() > 0:
             # find an unguarded rule without any assertions in it
             while index_history[-1] < num_rules:
                 rule = all_rules[index_history[-1]]
@@ -386,7 +384,8 @@ class CheckerSimulator(RobImplSimulator):
                     # check is false so that needs-more-data is trapped
                     result = rule.invoke(check = False, print_headers = True, show_print = True)
                     if result.exc_type is StimulusQueueNeedsMoreData:
-                        self.cycles = run_implementation_from_checksearch(cycles_to_run = delta_cycles)
+                        desired_stop_time_ps += delta_ps
+                        run_implementation_from_checksearch(duration_ps = desired_stop_time_ps - self.time_ps)
                     else:
                         break
                 num_invocations += 1
@@ -429,7 +428,7 @@ class CheckerSimulator(RobImplSimulator):
 
 
 sim = CheckerSimulator()
-assert sim.checksearch(Config.total_cycles, Config.cycles_per_checksearch)
+assert sim.checksearch(Config.total_ps, Config.ps_per_checksearch)
 
 
 if not args.quick:
@@ -444,7 +443,7 @@ if not args.quick:
                 if clock.next_event_time_ps >= final_time_ps:
                     break
                 self.time_ps = clock.next_event_time_ps
-                inject_bug = (not self.bug_injected) and self.cycles > Config.cycles_to_bug_injection
+                inject_bug = (not self.bug_injected) and self.time_ps > Config.ps_to_bug_injection
                 self.bug_injected = \
                     self.spec_testbench.copy_implementation_io(self.system, self.time_ps, inject_bug)
                 selected_rules = self.select_rules(clock, clock_name)
@@ -453,5 +452,5 @@ if not args.quick:
 
     print('Now run with bug injection')
     sim2 = BugInjectingSimulator()
-    result = sim2.checksearch(Config.total_cycles, Config.cycles_per_checksearch)
+    result = sim2.checksearch(Config.total_ps, Config.ps_per_checksearch)
     assert not result
