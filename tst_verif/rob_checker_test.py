@@ -26,12 +26,10 @@ Status:
     fast to pass, slow to fail
     unuseably slow to fail with systematic rule order search
     just about OK with hash matching
-    requirement for causality
+    requirement for causality done
         cautious approach: allow input if any output is later
         more aggresive: allow input if all outputs are later
         either gives a big improvement in time-to-fail
-    convert the checksearch to be a generator so that implementation sim can run in parallel
-        at least logically (without threading)
     split into generic and specific-to-rob
     add to Makefile
     add a doc
@@ -39,10 +37,11 @@ Status:
     add a second implementation which stalls on repeated ID, no buffer
 '''
 
-from purple import Model, Leaf, Port, Generic, UnDefined, PurpleException, GuardFailed, Integer
+from purple import Model, Leaf, Port, Generic, UnDefined, PurpleException, GuardFailed, Integer, ClockedSimulator
 from rob_spec_test import ReOrderBufferSpec
 from rob_implementation_test import Config, Types, Implementation_Testbench, RobImplSimulator
 from cli import args
+import enum
 
 class Config(Config):
     suppress_implementation_checks = True
@@ -301,15 +300,25 @@ class Rob_SpecChecker_Testbench(StimulusIOTestbenchBase):
         return bug
 
 
-class CheckerSimulator(RobImplSimulator):
+CheckerState = enum.Enum('CheckerState', 'WaitingForInput Passed Failed')
+
+
+class CheckerSimulatorBase(ClockedSimulator):
     # extends clocked simulator to copy inputs and outputs after every cycle
     # and enables it to run the spec (atomic-rule) simulator as a tester
     def __init__(self, impl_random_seed = None):
         print('elaborating spec testbench')
-        self.spec_testbench = Rob_SpecChecker_Testbench()
+        self.spec_testbench = self.spec_testbench_type()
+        self.rule_history = []
+        self.index_history = [0]
+        self.num_invocations = 0
+        self.failing_state_hashes = set()
+        self.num_hash_matches = 0
+
         print('elaborating implementation testbench')
         clks = dict(frequency_GHz = 1.0, name = 'clk')
-        impl_testbench = Implementation_Testbench()
+        impl_testbench = self.impl_testbench_type()
+
         print('making implementation simulator')
         super().__init__(impl_testbench, clks, random_seed = impl_random_seed)
 
@@ -324,22 +333,18 @@ class CheckerSimulator(RobImplSimulator):
             clock.event(selected_rules, show_print, print_headers)
             yield
 
-    def checksearch(self, total_ps, delta_ps):
+    def checksearch(self, allow_zero_rules = False):
         '''
         search for a sequence of rules by which the spec model can
         match the inputs and outputs of the implementation model
 
         keep going till the DUT output queues are empty - all matched against spec outputs
-
-        run the clocked (implementation) simulator as required to load more stimulus
+        stop and request more stimulus as required
 
         queue history is infinite; stimulus is never deleted
         could in many cases be restricted eg to 100 samples per port with minimal risk of
         needing to go back further to find a rule sequence that works
         this would save memory but maybe not any faster
-
-        recursive implementation cannot do more than a few hundred output packets
-            because of Python limits (and if they are removed, very inefficient)
 
         does not test any further if it finds a state whose hash matches a previously
             exhaustively tested state
@@ -347,48 +352,23 @@ class CheckerSimulator(RobImplSimulator):
         '''
         spec = self.spec_testbench
         impl = self.system
-        rule_history = []
-        index_history = [0]
-        failing_state_hashes = set()
+        rule_history = self.rule_history
+        index_history = self.index_history
+        failing_state_hashes = self.failing_state_hashes
         all_rules = tuple(spec.find_rule())
         num_rules = len(all_rules)
-        num_invocations = 0
-        num_hash_matches = 0
 
-        def run_implementation_from_checksearch(duration_ps = 0, title = ''):
-            if duration_ps > 0:
-                print('** Running implementation testbench to get more stimulus **')
-                self.run(duration_ps = duration_ps, show_print = False, print_headers = False)
-                if self.time_ps >= total_ps:
-                    # this will mean no further StimulusQueueNeedsMoreData exceptions
-                    spec.finalise_all_stimulus()
-            else:
-                print('**', title, '**')
-
-            print('  time simulated (ns):', self.time_ps / 1000, 'out of', total_ps / 1000)
-            print('  current number of unmatched outputs:', spec.num_unmatched_outputs())
-            print('  number of atomic rules in current history:', len(rule_history))
-            print('  number of atomic rules tested:', num_invocations)
-            print('  number of failing states found:', len(failing_state_hashes))
-            print('  number of hash matches:', num_hash_matches)
-
-        run_implementation_from_checksearch(duration_ps = delta_ps)
-        desired_stop_time_ps = delta_ps
-        while self.time_ps < total_ps or spec.num_unmatched_outputs() > 0:
+        while spec.num_unmatched_outputs() > 0:
             # find an unguarded rule without any assertions in it
             while index_history[-1] < num_rules:
                 rule = all_rules[index_history[-1]]
                 index_history[-1] += 1
 
-                while True:
-                    # check is false so that needs-more-data is trapped
-                    result = rule.invoke(check = False, print_headers = True, show_print = True)
-                    if result.exc_type is StimulusQueueNeedsMoreData:
-                        desired_stop_time_ps += delta_ps
-                        run_implementation_from_checksearch(duration_ps = desired_stop_time_ps - self.time_ps)
-                    else:
-                        break
-                num_invocations += 1
+                # check is false so that needs-more-data is trapped
+                result = rule.invoke(check = False, print_headers = True, show_print = True)
+                if result.exc_type is StimulusQueueNeedsMoreData:
+                    return CheckerState.WaitingForInput
+                self.num_invocations += 1
 
                 if result.guarded:
                     # rule is not runnable (does not change spec state) so not useful
@@ -400,7 +380,7 @@ class CheckerSimulator(RobImplSimulator):
 
                 elif spec._dp_model_state_hash in failing_state_hashes:
                     # we have been to this spec state before and we know it doesn't go anywhere useful
-                    num_hash_matches += 1
+                    self.num_hash_matches += 1
                     result.revert_state()
 
                 else:
@@ -414,25 +394,70 @@ class CheckerSimulator(RobImplSimulator):
                 # no plausible rule can be found, remove the newest rule from the
                 # history and continue searching from where we were
                 if len(rule_history) == 0:
-                    run_implementation_from_checksearch(title = 'Failed to find a rule sequence')
-                    spec.report_after_fail()
-                    return False
+                    return CheckerState.Failed
 
                 failed_rule = rule_history.pop(-1)
                 index_history.pop(-1)
                 failing_state_hashes.add(spec._dp_model_state_hash)
                 failed_rule.revert_state()
 
-        run_implementation_from_checksearch(title = 'Found a rule sequence')
-        return True
+        if rule_history or allow_zero_rules:
+            return CheckerState.Passed
+        else:
+            return CheckerState.Failed
+
+    def print_checker_state(self, title, total_ps):
+        print('**', title, '**')
+        print('  time simulated (ns):', self.time_ps / 1000, 'out of', total_ps / 1000)
+        print('  current number of unmatched outputs:', self.spec_testbench.num_unmatched_outputs())
+        print('  number of atomic rules in current history:', len(self.rule_history))
+        print('  number of atomic rules tested:', self.num_invocations)
+        print('  number of failing states found:', len(self.failing_state_hashes))
+        print('  number of hash matches:', self.num_hash_matches)
+
+    def run_implementation(self, total_ps, duration_ps):
+        if duration_ps > 0:
+            print('** Running implementation testbench to get more stimulus **')
+            self.run(duration_ps = duration_ps, show_print = False, print_headers = False)
+            if self.time_ps >= total_ps:
+                # this will mean no further StimulusQueueNeedsMoreData exceptions
+                self.spec_testbench.finalise_all_stimulus()
+
+        self.print_checker_state('Ran implementation testbench to get more stimulus', total_ps)
+
+    def run_checking_simulation(self, total_ps, duration_ps):
+        desired_stop_time_ps = duration_ps
+        self.run_implementation(total_ps, desired_stop_time_ps)
+        while True:
+            check_state = self.checksearch()
+
+            if check_state is CheckerState.WaitingForInput:
+                desired_stop_time_ps += duration_ps
+                self.run_implementation(total_ps, desired_stop_time_ps - self.time_ps)
+            elif check_state is CheckerState.Passed:
+                self.print_checker_state('Found a rule sequence', total_ps)
+                return True
+            elif check_state is CheckerState.Failed:
+                self.print_checker_state('Failed to find a rule sequence', total_ps)
+                return False
+            else:
+                assert False
 
 
-sim = CheckerSimulator()
-assert sim.checksearch(Config.total_ps, Config.ps_per_checksearch)
+class RobCheckerSimulator(CheckerSimulatorBase, RobImplSimulator):
+    spec_testbench_type = Rob_SpecChecker_Testbench
+    impl_testbench_type = Implementation_Testbench
+
+
+sim = RobCheckerSimulator()
+result = sim.run_checking_simulation(Config.total_ps, Config.ps_per_checksearch)
+assert result
 
 
 if not args.quick:
-    class BugInjectingSimulator(CheckerSimulator):
+    print('Now run with bug injection')
+
+    class BugInjectingSimulator(RobCheckerSimulator):
         def __init__(self, *a, **ka):
             super().__init__(*a, **ka)
             self.bug_injected = False
@@ -450,7 +475,6 @@ if not args.quick:
                 clock.event(selected_rules, show_print, print_headers)
                 yield
 
-    print('Now run with bug injection')
     sim2 = BugInjectingSimulator()
-    result = sim2.checksearch(Config.total_ps, Config.ps_per_checksearch)
+    result = sim2.run_checking_simulation(Config.total_ps, Config.ps_per_checksearch)
     assert not result
