@@ -110,40 +110,6 @@ tests todo
     parameterised model and record including partial-specialisation
     shallow and deep copy of static-records to/from transient-records
 
-support for atomic-rule specifications co-simulating with RTL as a scoreboard
-    issue is that RTL micro-architecture may affect visible behaviour at boundary of device under test
-    for example, if the RTL gets 2 input messages in the same clock cycle and the DUT contains an
-        arbiter, then one of them will go before the other; the order may be encoded in an output if for
-        example a storage buffer is assigned to each after arbitration
-    there is no problem modelling this using Purple atomic-rules; 2 rules are invocable and either order
-        is legal, leading to different system states
-    desire is to use the Purple model as a reference for an RTL implementation, so for example
-        the DUT-RTL is simulated (or analysed)
-        inputs to the DUT-RTL are also applied to the Purple model
-        outputs from the DUT-RTL are compared with outputs from the Purple model to see if they are legal
-    legal: there exists at least one order of atomic-rule invocation which produces the RTL outputs
-    so we want a Purple simulator able to search exhaustively for atomic-rule sequences that match some
-        defined outputs
-    probably each time there is an output it only needs to search till it finds one legal sequence,
-        but remember all illegal ones so those don't need to be tested again
-        and every RTL input should correspond to a (parameterised) rule invocation
-        some inputs may have undefined order (eg if from different physical interfaces) and some well-defined
-    how does it report "no rule sequence found"?
-        up to some impossible observation there are potentially many legal sequences
-        so there may be multiple legal versions of that observation
-        or there may be no legal version of that observation (something else should have happened first)
-        all it can say is "cannot reproduce DUT outputs x,y,z"
-        but a more conventional scoreboard would say "output x is wrong, predicted xx"
-        1) something came out of spec but not exact match.  give a list of
-           legal options (ordered by hamming distance)
-        2) something similar can out of a different interface eg address lookup error (is this the same as 1, given that nothing is predicted at that place so it will be a mismatch?)
-        3) nothing came out anywhere
-           have to run to deadlock for this to be a conclusion so this seems OK
-    is causality an input or unimportant (ie, is it illegal behaviour for an
-        output to happen before some input)?
-    this is interesting and difficult to predict the complexity and performance
-        build a simple example eg an arbiter
-
 need to decide on immediate-visibility in clocked rules
     at the moment I am in favour of immediate visibility, because of a bad experience with
     passing a static-record by reference through a port
@@ -193,3 +159,4 @@ from .clock import *
 from .parameterise import *
 from .interface import *
 from .simulator import *
+from .verif import *

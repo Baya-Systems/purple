@@ -12,7 +12,7 @@
 
 TEST_LIST_PY := $(wildcard tst*/*_test.py)
 TEST_LIST := $(subst _test,,$(basename $(notdir $(TEST_LIST_PY))))
-REGRESSION_LIST_PY := $(wildcard tst/*_test.py)
+REGRESSION_LIST_PY := $(wildcard tst/*_test.py) $(wildcard tst_verif/*_test.py)
 REGRESSION_LIST := $(subst _test,,$(basename $(notdir $(REGRESSION_LIST_PY))))
 run_script = $(subst $(1)_test,run,$(filter tst%/$(1)_test.py,$(TEST_LIST_PY)))
 

@@ -164,7 +164,7 @@ class ClockedSimulator(SimulatorBase):
     def run_one_step(self, final_time_ps, show_print, print_headers):
         while True:
             clock, clock_name = min(self.clocks)
-            if clock.next_event_time_ps >= final_time_ps:
+            if clock.next_event_time_ps > final_time_ps:
                 break
             self.time_ps = clock.next_event_time_ps
             selected_rules = self.select_rules(clock, clock_name)
