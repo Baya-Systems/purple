@@ -67,25 +67,28 @@ class Rob_SpecChecker_Testbench(StimulusIOTestbenchBase):
         _.completion_out_b >> comp_to_requester_b.port_for_spec_output,
     ]
 
-    def stimulus_input_mapping(self, implementation =  None):
-        return (
-            (getattr(implementation, 'req_out_a', None), self.new_req_a),
-            (getattr(implementation, 'req_out_b', None), self.new_req_b),
-            (getattr(implementation, 'comp_out', None), self.comp_from_completer),
-        )
+    stimulus_mapping = dict(
+        new_req_a = 'req_out_a',
+        new_req_b = 'req_out_b',
+        comp_from_completer = 'comp_out',
+        req_to_completer = 'req_in',
+        comp_to_requester_a = 'comp_in_a',
+        comp_to_requester_b = 'comp_in_b',
+    )
 
-    def stimulus_output_mapping(self, implementation = None):
-        return (
-            (getattr(implementation, 'req_in', None), self.req_to_completer),
-            (getattr(implementation, 'comp_in_a', None), self.comp_to_requester_a),
-            (getattr(implementation, 'comp_in_b', None), self.comp_to_requester_b),
-        )
+    def stimulus_inputs(self):
+        return (self.new_req_a, self.new_req_b, self.comp_from_completer)
+
+    def stimulus_outputs(self):
+        return (self.req_to_completer, self.comp_to_requester_a, self.comp_to_requester_b)
 
     def copy_implementation_io(self, implementation, time_ps, inject_bug = False):
-        # runs after every clock cycle
-        sm = self.stimulus_input_mapping(implementation) + self.stimulus_output_mapping(implementation)
+        # runs after every clock cycle in this case; could capture implementation IO
+        # and copy after every 100 or every 1000 cycles or even the entire simulation
+        sm = self.stimulus_inputs() + self.stimulus_outputs()
         bug = False
-        for vr,sq in sm:
+        for sq in sm:
+            vr = getattr(implementation, self.stimulus_mapping[sq.name[-1]])
             PT = sq.param_entry_type
             if vr.valid and vr.ready:
                 if inject_bug and not bug:

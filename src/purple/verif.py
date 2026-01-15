@@ -224,42 +224,38 @@ class StimulusIOCheckerState:
 
 class StimulusIOTestbenchBase(model.Model):
     def before_next_output(self, time_ps):
-        sq = (i.queue for _,i in self.stimulus_input_mapping())
+        sq = (i.queue for i in self.stimulus_outputs())
         return all((q.shared_state.store_is_complete or time_ps <= q.peek()[1]) for q in sq)
 
     def before_all_outputs(self, time_ps):
-        sq = (i.queue for _,i in self.stimulus_input_mapping())
+        sq = (i.queue for i in self.stimulus_outputs())
         return not any(((not q.shared_state.store_is_complete) and time_ps > q.peek()[1]) for q in sq)
 
-    def stimulus_input_mapping(self, implementation = None):
+    def stimulus_inputs(self):
         # return a tuple of (ref_to_something_in_implementation_testbench, StimulusInput)
         # unless implementation is None in which case (None, StimulusInput)
-        raise TypeError('override stimulus_input_mapping() in model-specific testbench class')
+        raise TypeError('override stimulus_inputs() in model-specific testbench class')
 
-    def stimulus_output_mapping(self, implementation = None):
+    def stimulus_outputs(self):
         # return a tuple of (ref_to_something_in_implementation_testbench, StimulusOutput)
         # unless implementation is None in which case (None, StimulusInput)
-        raise TypeError('override stimulus_output_mapping() in model-specific testbench class')
-
-    def copy_implementation_io(self, implementation, time_ps):
-        raise TypeError('override copy_implementation_io_to_spec_testbench() in model-specific testbench class')
+        raise TypeError('override stimulus_outputs() in model-specific testbench class')
 
     def num_unmatched_outputs(self):
-        return sum(len(sq.queue) for _,sq in self.stimulus_output_mapping())
+        return sum(len(sq.queue) for sq in self.stimulus_outputs())
 
     def any_unmatched_outputs(self):
-        return not all(sq.queue.all_matched() for _,sq in self.stimulus_output_mapping())
+        return not all(sq.queue.all_matched() for sq in self.stimulus_outputs())
 
     def finalise_all_stimulus(self):
-        sm = self.stimulus_input_mapping() + self.stimulus_output_mapping()
-        for _,sq in sm:
+        for sq in self.stimulus_inputs() + self.stimulus_outputs():
             sq.queue.completed()
 
     def report_after_fail(self, num_packets_to_report):
         earliest_nomatch = None
 
         print('Output Stimulus:')
-        for _,sq in self.stimulus_output_mapping():
+        for sq in self.stimulus_outputs():
             print('   ', '.'.join(sq.name))
             ss = sq.queue.shared_state
             if ss.store:
@@ -277,7 +273,7 @@ class StimulusIOTestbenchBase(model.Model):
             earliest_nomatch = 0
 
         print('Input Stimulus before', earliest_nomatch, 'ps')
-        for _,sq in self.stimulus_input_mapping():
+        for sq in self.stimulus_inputs():
             print('   ', '.'.join(sq.name))
             ss = sq.queue.shared_state
             if ss.store:
