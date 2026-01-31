@@ -12,9 +12,6 @@ A simple testbench for the spec is implemented which
     uses the implementation-DUT inputs as inputs to the spec-DUT
     checks whether any sequence of spec-DUT rules can create the implementation-GUT outputs
 
-Initial approach is fully manual (here)
-Will see which parts of it make sense to move to be part of Purple
-
 Notes:
     only works if the entire history of the implementation-sim is available;
     cannot eg find a solution for the first 100 cycles then look for a solution for
@@ -32,8 +29,6 @@ Status:
         either gives a big improvement in time-to-fail
     note the entire clocked sim is specific to rob
         because we're only using the purple clocked sim as a placeholder for an RTL EDA tool
-    add a doc
-    add a second implementation which stalls on repeated ID, no buffer
 '''
 
 from purple import StimulusIOTestbenchBase, StimulusInput, StimulusOutput
@@ -152,33 +147,34 @@ class RobCheckerSimulator(RobImplSimulator):
                 assert False
 
 
-sim = RobCheckerSimulator()
-result = sim.run_checking_simulation(Config.total_ps, Config.ps_per_checksearch)
-assert result
+if __name__ == args.test_name + '_test':
+    sim = RobCheckerSimulator()
+    result = sim.run_checking_simulation(Config.total_ps, Config.ps_per_checksearch)
+    assert result
 
 
-if not args.quick:
-    print()
-    print('Now run with bug injection')
+    if not args.quick:
+        print()
+        print('Now run with bug injection')
 
-    class BugInjectingSimulator(RobCheckerSimulator):
-        def __init__(self, *a, **ka):
-            super().__init__(*a, **ka)
-            self.bug_injected = False
+        class BugInjectingSimulator(RobCheckerSimulator):
+            def __init__(self, *a, **ka):
+                super().__init__(*a, **ka)
+                self.bug_injected = False
 
-        def run_one_step(self, final_time_ps, show_print, print_headers):
-            while True:
-                clock, clock_name = min(self.clocks)
-                if clock.next_event_time_ps > final_time_ps:
-                    break
-                self.time_ps = clock.next_event_time_ps
-                inject_bug = (not self.bug_injected) and self.time_ps > Config.ps_to_bug_injection
-                self.bug_injected = \
-                    self.spec_testbench.copy_implementation_io(self.system, self.time_ps, inject_bug)
-                selected_rules = self.select_rules(clock, clock_name)
-                clock.event(selected_rules, show_print, print_headers)
-                yield
+            def run_one_step(self, final_time_ps, show_print, print_headers):
+                while True:
+                    clock, clock_name = min(self.clocks)
+                    if clock.next_event_time_ps > final_time_ps:
+                        break
+                    self.time_ps = clock.next_event_time_ps
+                    inject_bug = (not self.bug_injected) and self.time_ps > Config.ps_to_bug_injection
+                    self.bug_injected = \
+                        self.spec_testbench.copy_implementation_io(self.system, self.time_ps, inject_bug)
+                    selected_rules = self.select_rules(clock, clock_name)
+                    clock.event(selected_rules, show_print, print_headers)
+                    yield
 
-    sim2 = BugInjectingSimulator()
-    result = sim2.run_checking_simulation(Config.total_ps, Config.ps_per_checksearch)
-    assert not result
+        sim2 = BugInjectingSimulator()
+        result = sim2.run_checking_simulation(Config.total_ps, Config.ps_per_checksearch)
+        assert not result
