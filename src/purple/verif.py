@@ -225,7 +225,7 @@ class StimulusIOCheckerState:
 class StimulusIOTestbenchBase(model.Model):
     def before_next_output(self, time_ps):
         sq = (i.queue for i in self.stimulus_outputs())
-        return all((q.shared_state.store_is_complete or time_ps <= 2000+ q.peek()[1]) for q in sq)
+        return all((q.shared_state.store_is_complete or time_ps <= q.peek()[1]) for q in sq)
 
     def before_all_outputs(self, time_ps):
         sq = (i.queue for i in self.stimulus_outputs())
