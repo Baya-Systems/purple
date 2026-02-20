@@ -280,7 +280,7 @@ class StimulusIOTestbenchBase(model.Model):
                 vt = [
                     (v, t, 'UNUSED' if i > ss.max_read_pointer else '')
                     for i,(v,t) in enumerate(ss.store)
-                    if t < earliest_nomatch
+                    if t <= earliest_nomatch
                 ]
                 for v,t,note in vt[-num_packets_to_report:]:
                     print('        ', t, 'ps:', v, note)
