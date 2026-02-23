@@ -30,20 +30,12 @@ class Config(Config):
     num_packets_to_report = 16
 
 
-class SimpleRob_SpecChecker_Testbench(Rob_SpecChecker_Testbench):
-    # this should not be necessary but there is some strange thing going on
-    # with ordering: the simple-ROB needs to tolerate non-determinism :-()
-    def before_next_output(self, time_ps):
-        sq = (i.queue for i in self.stimulus_outputs())
-        return all((q.shared_state.store_is_complete or time_ps <= 2000 + q.peek()[1]) for q in sq)
-
-
 class SimpleRobCheckerSimulator(RobCheckerSimulator):
     # extends clocked simulator to copy inputs and outputs after every cycle
     # and enables it to run the spec (atomic-rule) simulator as a tester
     def __init__(self, impl_random_seed = None):
         print('elaborating spec testbench')
-        self.spec_testbench = SimpleRob_SpecChecker_Testbench()
+        self.spec_testbench = Rob_SpecChecker_Testbench()
 
         print('elaborating implementation testbench')
         clks = dict(frequency_GHz = 1.0, name = 'clk')
@@ -54,10 +46,11 @@ class SimpleRobCheckerSimulator(RobCheckerSimulator):
 
 
 if __name__ == args.test_name + '_test':
-    sim = SimpleRobCheckerSimulator()
+    seed = None
+#    seed = 190827057014494
+    sim = SimpleRobCheckerSimulator(impl_random_seed = seed)
     result = sim.run_checking_simulation(Config.total_ps, Config.ps_per_checksearch)
-    assert result
-
+    assert result, f'failed with seed = {sim.seed}'
 
     if not args.quick:
         print()

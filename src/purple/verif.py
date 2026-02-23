@@ -317,13 +317,14 @@ class StimulusIOTestbenchBase(model.Model):
             # find an unguarded rule without any assertions in it
             while index_history[-1] < num_rules:
                 rule = all_rules[index_history[-1]]
-                index_history[-1] += 1
 
                 # check is false so that needs-more-data is trapped
                 result = rule.invoke(check = False, print_headers = True, show_print = True)
                 if result.exc_type is StimulusQueueNeedsMoreData:
                     return checker_state.wait_for_input()
+
                 checker_state.num_invocations += 1
+                index_history[-1] += 1
 
                 if result.guarded:
                     # rule is not runnable (does not change spec state) so not useful

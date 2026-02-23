@@ -74,6 +74,27 @@ FIXME
             a: Integer[0,100] = ArrayIndexInitialiser
             b: ArrayIndex
             c: MutableArrayIndex[Integer[0,100]]
+    for Python without GIL, simulators should be able to explore rules in parallel from the same system state
+        this implies having multiple testbenches within a simulator, with synchronised state
+        allocate a decent number of rules to each testbench, because we will synchronise after one step
+        are state hashes protable across testbenches?
+        1. atomic rule simulation
+            1.1 searching for a rule at random
+                run all rules; synchronise; select a rule to commit; apply its state to all testbenches; repeat
+                this can reduce the number of random single trials before giving up and going systematic
+                speeds you up if a high proportion of rules are guarded
+                slows you down a bit when most rules are runnable
+            1.2 verification search for any rule that works
+                main value (what is slowest now) is proving there's no possible rule sequence that matches stimulus
+                so is it as simple as running a load of check-search in parallel, only starting with a subset of rules?
+                do that and some threads will rapidly fail and then need to be re-deployed
+                need a new algorithm
+                when it is failing, will eventually run all rules so can do that in parallel
+                but when not failing this may be wasteful
+        2. clocked simulation
+            if there are many rules, just divide them among simulators/threads
+            at end of clock cycle apply all state updates to all simulators
+
 
 cleanup
     documentation
@@ -97,7 +118,7 @@ cleanup
         ports bind to handlers with the right Record/Leaf type
         ports bind to ports with the right Record/Leaf type
         ports bind in the right direction and fan in/out is controlled
-    replace star-import with named set of things
+    replace star-import with named set of things in this file __init__.py
     support copying records from superclasses and subclasses?
     force port payload type to be a record or a leaf
     can ArrayIndex be mutable, so just used as an initial value but then changes (eg for initialising a linked-list)?
