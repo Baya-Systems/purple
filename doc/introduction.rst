@@ -72,9 +72,23 @@ Summary of Purple Concepts
   * a port is a generic Purple *Model*
   * it has a type, which can be a *Record* or *Union* or *Leaf*
   * ports form the external interfaces (along with rules) of the model in which they are declared
-  * a port can be bound to another port (typically in another model) or to a handler method
-    (typically in the same model)
-  * when a model declares a state element that is a model, it may also declare bindings for that model's ports
+  * a port can be bound to another port (typically in another model-component of the same system)
+    or to a handler method (typically in the same model-component)
+  * a port is either an input or an output, relative to the model in which it is instantiated.
+    Rules (see below) read from input ports and write to output ports
+  * when a model A declares a state element B that is a model, it may also declare bindings for B's ports.
+    Those bindings may be to other ports within model A's hierarchy, or to handler methods.
+    Chains of ports may be created by bindings; this connects the endpoints of the chain as
+    if they were directly bound, allowing internal structure of a model to be hidden/abstracted
+  * a port has either "pull" or "push" semantics.
+    An input pull-port is bound to a chain whose other end is an output pull port, which is
+    bound to a handler.
+    When the value of the input port is read, the handler of the output port is called and
+    must return a value of the appropriate type.
+    An output push-port is bound to a chain whose other end is an input push-port, which is
+    bound to a handler.
+    When the vaue of the output port is written, the handler of the input port is called with the
+    new value as a parameter
   * an *Interface* is a Purple *Model* designed to be a base class for a group of ports commonly
     instantiated together with common parameters and bindings (for example the 5 channels of the AXI protocol)
 

@@ -10,13 +10,31 @@ lint is not fully clean and probably cannot be, but valuable
 
 FIXME
     py3.14 breaks everything
+        with 3.13 elaboration is not deterministic; fix this in 3.14
+        problem seems to be the order of rules, which can affect randomised simulators
     declaring a state type as Tuple not Tuple[XYZ] fails silently
     start rules
+        can there be more than one?  can they have parameters?
         class X(Model):
             b: SomeType
             end_of_elaboration: make_b
             def make_b(self): self.b = blah
+        can we have a factory option for initial values?  see below array-index-initialiser
+        class X(Model):
+            b: SomeType = Initialiser[make_b]
+            def make_b(self): return blah
+    clocked simulator should include time in rule printout headers
     invariants
+    very common case is to have a variable that may be invalid or valid
+        so create a convenient way to do this
+        class A(Model):
+            x: MyRecord | Const[None] # needs "if x is None"
+            y: Optional[MyRecord] # same but has a method y.is_valid() which may not fly for Leaf
+            z: Optional[MyRecordorLeaf] # syntactic sugar for Const[None]
+    rules with parameters get very slow
+        rather than generating a separate rule for each parameter set during elaboration
+        choose a parameter set after rule selection, by randomisation of record/leaf
+        saves memory, saves startup time, might increase simulation time
     coverage definition methods
     array with enum keys
     save/restore
@@ -32,6 +50,10 @@ FIXME
         coding style is bad - test for leaf in Tuple
         no protection against transient BitVector being in-place modifiable (so non-undoable state change)
         so need frozen bitvectors (Leaf already plans for this)?
+    where a leaf has an object type (like Tuple or BitVector or Modulo) it would be nice to be able
+        to derive new object types in a relatively easy way
+        currently needs re-write of the Generic to use the derived class
+        use case: I tried to add a method to Tuple
     configurable models
         how to have an array of non-identical things (eg buffers of different message types or different lengths)
         might not be an "Array", but still ought to be possible without code-in-declaration
@@ -43,6 +65,8 @@ FIXME
             eg same basic generic type but different parameters
         can a (frozen) transient Record object be a parameter to Generic?
     can I have a Tuple of Union?
+    change Generic so that it sets the class name to something useful unless
+      it has been overridden
     array-index variant allowing modification after elab
         only sets initial value
         question is: what are the limits on modifications?
@@ -50,6 +74,27 @@ FIXME
             a: Integer[0,100] = ArrayIndexInitialiser
             b: ArrayIndex
             c: MutableArrayIndex[Integer[0,100]]
+    for Python without GIL, simulators should be able to explore rules in parallel from the same system state
+        this implies having multiple testbenches within a simulator, with synchronised state
+        allocate a decent number of rules to each testbench, because we will synchronise after one step
+        are state hashes protable across testbenches?
+        1. atomic rule simulation
+            1.1 searching for a rule at random
+                run all rules; synchronise; select a rule to commit; apply its state to all testbenches; repeat
+                this can reduce the number of random single trials before giving up and going systematic
+                speeds you up if a high proportion of rules are guarded
+                slows you down a bit when most rules are runnable
+            1.2 verification search for any rule that works
+                main value (what is slowest now) is proving there's no possible rule sequence that matches stimulus
+                so is it as simple as running a load of check-search in parallel, only starting with a subset of rules?
+                do that and some threads will rapidly fail and then need to be re-deployed
+                need a new algorithm
+                when it is failing, will eventually run all rules so can do that in parallel
+                but when not failing this may be wasteful
+        2. clocked simulation
+            if there are many rules, just divide them among simulators/threads
+            at end of clock cycle apply all state updates to all simulators
+
 
 cleanup
     documentation
@@ -73,7 +118,7 @@ cleanup
         ports bind to handlers with the right Record/Leaf type
         ports bind to ports with the right Record/Leaf type
         ports bind in the right direction and fan in/out is controlled
-    replace star-import with named set of things
+    replace star-import with named set of things in this file __init__.py
     support copying records from superclasses and subclasses?
     force port payload type to be a record or a leaf
     can ArrayIndex be mutable, so just used as an initial value but then changes (eg for initialising a linked-list)?
@@ -85,40 +130,6 @@ tests todo
     enum, boolean, constant
     parameterised model and record including partial-specialisation
     shallow and deep copy of static-records to/from transient-records
-
-support for atomic-rule specifications co-simulating with RTL as a scoreboard
-    issue is that RTL micro-architecture may affect visible behaviour at boundary of device under test
-    for example, if the RTL gets 2 input messages in the same clock cycle and the DUT contains an
-        arbiter, then one of them will go before the other; the order may be encoded in an output if for
-        example a storage buffer is assigned to each after arbitration
-    there is no problem modelling this using Purple atomic-rules; 2 rules are invocable and either order
-        is legal, leading to different system states
-    desire is to use the Purple model as a reference for an RTL implementation, so for example
-        the DUT-RTL is simulated (or analysed)
-        inputs to the DUT-RTL are also applied to the Purple model
-        outputs from the DUT-RTL are compared with outputs from the Purple model to see if they are legal
-    legal: there exists at least one order of atomic-rule invocation which produces the RTL outputs
-    so we want a Purple simulator able to search exhaustively for atomic-rule sequences that match some
-        defined outputs
-    probably each time there is an output it only needs to search till it finds one legal sequence,
-        but remember all illegal ones so those don't need to be tested again
-        and every RTL input should correspond to a (parameterised) rule invocation
-        some inputs may have undefined order (eg if from different physical interfaces) and some well-defined
-    how does it report "no rule sequence found"?
-        up to some impossible observation there are potentially many legal sequences
-        so there may be multiple legal versions of that observation
-        or there may be no legal version of that observation (something else should have happened first)
-        all it can say is "cannot reproduce DUT outputs x,y,z"
-        but a more conventional scoreboard would say "output x is wrong, predicted xx"
-        1) something came out of spec but not exact match.  give a list of
-           legal options (ordered by hamming distance)
-        2) something similar can out of a different interface eg address lookup error (is this the same as 1, given that nothing is predicted at that place so it will be a mismatch?)
-        3) nothing came out anywhere
-           have to run to deadlock for this to be a conclusion so this seems OK
-    is causality an input or unimportant (ie, is it illegal behaviour for an
-        output to happen before some input)?
-    this is interesting and difficult to predict the complexity and performance
-        build a simple example eg an arbiter
 
 need to decide on immediate-visibility in clocked rules
     at the moment I am in favour of immediate visibility, because of a bad experience with
@@ -169,3 +180,4 @@ from .clock import *
 from .parameterise import *
 from .interface import *
 from .simulator import *
+from .verif import *
