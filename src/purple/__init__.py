@@ -12,6 +12,19 @@ FIXME
     py3.14 breaks everything
         with 3.13 elaboration is not deterministic; fix this in 3.14
         problem seems to be the order of rules, which can affect randomised simulators
+    state variable type for clocked sim integer where two processes change the value
+        eg num_outstanding: DualProcessCounter[limit]
+        def clocked(self):
+            num_outstanding.a += 1
+            if num_outstanding == 57: do_stuff()
+        def handled(self):
+            if num_outstanding == 57: do_stuff()
+            num_outstanding.b -= 1
+        do not like this syntax.  should be a leaf.  should be hidden
+        only possible for commutative operations eg not for (+1) and (*2)
+        so maybe make a very specific integer-with-multiple-additions only
+        no idea how to achieve this
+    add a Dictionary leaf type basically the same as Tuple
     declaring a state type as Tuple not Tuple[XYZ] fails silently
     start rules
         can there be more than one?  can they have parameters?
@@ -28,7 +41,7 @@ FIXME
     very common case is to have a variable that may be invalid or valid
         so create a convenient way to do this
         class A(Model):
-            x: MyRecord | Const[None] # needs "if x is None"
+            x: MyRecord | Const[None] # needs "if x is None"  maybe allow (MyRecord | None)
             y: Optional[MyRecord] # same but has a method y.is_valid() which may not fly for Leaf
             z: Optional[MyRecordorLeaf] # syntactic sugar for Const[None]
     rules with parameters get very slow
@@ -37,6 +50,7 @@ FIXME
         saves memory, saves startup time, might increase simulation time
     coverage definition methods
     array with enum keys
+            myarray: Array[enum_class, element_class] = {dict_of_initial_values}
     save/restore
     ability to suppress a rule in subclass
     cosimulation with Verilog-DPI
@@ -56,17 +70,17 @@ FIXME
         use case: I tried to add a method to Tuple
     configurable models
         how to have an array of non-identical things (eg buffers of different message types or different lengths)
-        might not be an "Array", but still ought to be possible without code-in-declaration
-            ie still syntactic sugar for naming of sub-components
-            use of an array means not possible to use generic-Model with different parameters
-        how do you specify the structure?
-            configuration object, eg a transient Record but can a Record contain type references?
-            what limitations on configuration make it possible to do something better than a subclass?
-            eg same basic generic type but different parameters
-        can a (frozen) transient Record object be a parameter to Generic?
+            myarray: Array[list_of_types] = [list_of_initial_values]
+
+        mycomponents: Subcomponents[dict_of_types] = {dict_of_initial_values}
+            # this gives you whatever names you want matched to whatever types
+            # dict should support any of integer/enum/string keys, same keys for types and initial-values
+
+        add_state(f'my_thing_{qualifier}', Integer[max_function(qualifier)], first_function(qualifier))
+        Element[f'my_thing_{qualifier}']: Integer[max_function(qualifier)] = first_function(qualifier)
+
     can I have a Tuple of Union?
-    change Generic so that it sets the class name to something useful unless
-      it has been overridden
+    change Generic so that it sets the class name to something useful unless it has been overridden
     array-index variant allowing modification after elab
         only sets initial value
         question is: what are the limits on modifications?

@@ -23,6 +23,7 @@ Self-check uses same tuple-based history mechanism as spec-model
 
 Status:
     RTL re-order buffer written and passing dedicated test in this file
+    FIXME seems to fail sometimes; testbench receive completions and check ordering can find nothing in history?
 
 Next
     Could add a simplified alternative RTL which blocks on ID collisions, see if the
