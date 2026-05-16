@@ -5,15 +5,20 @@ license = "MIT"
 readme = "README.md"
 
 dynamic = ["version"]
-license-files = ["licence.txt"]
+license-files = ["LICENSE"]
 authors = [
     {name = "James Aldis", email = "james.aldis@baysystems.com"},
 ]
 maintainers = [
     {name = "James Aldis", email = "james.aldis@baysystems.com"}
 ]
-requires-python = ">= 3.11, < 3.14"
+requires-python = ">= 3.12, < 3.14"
 dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "tox",
+]
 
 [build-system]
 requires = ["hatchling"]
