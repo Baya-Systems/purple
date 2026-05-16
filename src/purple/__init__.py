@@ -24,6 +24,9 @@ FIXME
         only possible for commutative operations eg not for (+1) and (*2)
         so maybe make a very specific integer-with-multiple-additions only
         no idea how to achieve this
+            maybe override += and -= on an IntegerLeaf object which stores 2 separate values internally
+            but still, how do we decide which value to change?
+            maybe one process calls += and the other -= and we have num_incr and num_decr
     add a Dictionary leaf type basically the same as Tuple
     declaring a state type as Tuple not Tuple[XYZ] fails silently
     start rules
