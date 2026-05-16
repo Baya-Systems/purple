@@ -12,7 +12,7 @@ authors = [
 maintainers = [
     {name = "James Aldis", email = "james.aldis@baysystems.com"}
 ]
-requires-python = ">= 3.11, < 3.14"
+requires-python = ">= 3.14"
 dependencies = []
 
 [build-system]

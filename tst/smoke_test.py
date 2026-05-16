@@ -13,6 +13,7 @@ from purple import Model, Integer
 class SmokeTest(Model):
     counter: Integer[10] = 0
     rules: [increment_counter]
+    sss: (A | None) >> B
 
     def increment_counter(self):
         self.counter = (self.counter + 1) % 10

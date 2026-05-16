@@ -16,8 +16,10 @@
 # on any python-3.12 machine.
 #
 
+# changed for porting to Python-3.14
+
 echo ${PURPLE:=$HOME/Code/purple}
-echo ${DOCKER_IMAGE:=python:3.12}
+echo ${DOCKER_IMAGE:=python:3.14}
 
 cd $PURPLE
 

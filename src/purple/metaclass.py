@@ -21,6 +21,7 @@ FIXME
 '''
 
 import inspect
+import annotationlib
 
 from . import common
 
@@ -83,6 +84,12 @@ class PurpleTypeProxy:
     if we refer to a previously-declared sub-component, we need to be able to get a
     similar reference for its internal sub-state
     '''
+    # PY-3-14
+    # will not be triggered for an annotation
+    # still needed for
+    #   standalone (not using _ and []) bindings x.in << y.out
+    #   initial values using _
+
     def __init__(self, name, purple_type, hierarchical_name):
         self.name = (*hierarchical_name, name)
         self.purple_type = purple_type
@@ -138,6 +145,7 @@ class Binding:
             ]
 
     not allowed to refer to a hierarchical component before it is declared
+    # PY-3-14 can we remove this restriction?
 
     Port-to-handler binding
         could be for input port to call when a value arrives (push)
@@ -188,9 +196,9 @@ class AnnotationDict(dict):
 class PurpleNamespace(dict):
     '''modified namespace dict allowing interception of object declaration
 
-    unknown names may occur
+    unknown names may occur outside type annotations
         as binding targets
-        in lists of rules or invariants
+        in initial-value expressions
 
     may want to detect some names as magic methods eg "add_state_by_name"
     '''
@@ -274,7 +282,54 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
 
     def __new__(metacls, name, bases, classdict):
         assert metacls.namespace_stack[-1] is classdict
+
+        # PY-3-14
+        print('+++++++++++++++++++++++++++++++++++++++')
+        print(' making a hierarchical class', name)
+
+        print(' get_annotations from namespace')
+        print(annotationlib.get_annotate_from_class_namespace(classdict))
+
         cls = type.__new__(metacls, name, bases, classdict)
+
+        print(' get_annotations STRING')
+        print(annotationlib.get_annotations(cls, format = annotationlib.Format.STRING))
+
+        ''' annotations as string is a dict of strings
+            but it does not include the initial-value
+            annotations as forwardref is empty
+            annotations as value is empty
+            get_annotate_from_class_namespace() seems to return nothing
+
+            - how do I evaluate the strings in the declarers context?
+            - I still need a namespace class for lazy evaluation of _ in initial values
+            - problem: if a binding refers to an annotation (a state element)
+                how do we distinguish this from a global with the same name?
+                we don't know the annotations yet, when standalone bindings are declared
+                    store it as a proxy
+                    evaluate it at the end when annotations are known
+                    may struggle to support arbitrary expressions in bindings?
+            - how do we declare state with string name?
+                maybe use the namespace to detect a reserved word
+                Array[] uses this
+            - cannot put f-strings in annotations (minor annoyance for rules)
+            - cannot put and/or/if-else in annotations
+
+            sequence of class declaration:
+            1. __prepare__() creates namespace
+            2. python parses class declaration
+                adds annotations as strings to its own private collection
+                adds class variables when initial values are defined
+                    can these refer to "_"? eg x: (Integer[...] * 10) = [0 for k in _]
+                    that looks pretty hard to support since we will not know the type early enough
+                    but might work for a generator x: (Integer[...] * 10) = (0 for k in _)
+                calls the << >> operators when standalone bindings are declared
+            3. __new__() creates the class
+                go through annotation strings
+                    get types
+                    evaluate bindings
+                    then refresh initial values and delete class variables
+        '''
 
         cls._dp_state_types = dict()
         cls._dp_initial_value = dict()
