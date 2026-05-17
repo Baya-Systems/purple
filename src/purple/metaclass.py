@@ -178,20 +178,6 @@ class Binding:
         rhs = '.'.join([self.rhs.__name__] if inspect.isfunction(self.rhs) else self.rhs.name)
         return f'{lhs.rjust(30)} {">>" if self.left2right else "<<"} {rhs}'
 
-class AnnotationDict(dict):
-    'triggers binding resolution when annotations are added to the class'
-    def __setitem__(self, key, value):
-        common.UnResolvableType.insist(not isinstance(value, PurpleTypeProxy),
-            f'annotation "{key}" not resolvable')
-
-        do_resolve = inspect.isclass(value) and issubclass(value, common.PurpleComponent)
-        if key in ('rules',):
-            do_resolve = False
-        if do_resolve:
-            PurpleHierarchicalMetaClass.resolve_bindings(key, value)
-
-        return super().__setitem__(key, value)
-
 
 class PurpleNamespace(dict):
     '''modified namespace dict allowing interception of object declaration
@@ -209,13 +195,11 @@ class PurpleNamespace(dict):
         if self.caller_globals is self.caller_locals:
             self.caller_globals = dict()
         self.ambiguous_references = dict()
-        self.annotations = AnnotationDict()
-        self['__annotations__'] = self.annotations
         self.bindings = []
         self.last_getitem_index = ()
         self.recent_type_proxies = []
 
-    def __getitem__(self, key):
+    def XXX__getitem__(self, key):
         unique_object = common.UniqueObject
 
         # maximum priority
@@ -225,9 +209,10 @@ class PurpleNamespace(dict):
 
         # first priority:
         # references to annotations get a proxy, ignoring any default value that may have been set
-        v = self.annotations.get(key, unique_object)
-        if v is not unique_object:
-            return PurpleTypeProxy(key, v, ())
+        ### PY-3-14 not possible any more
+#        v = self.annotations.get(key, unique_object)
+#        if v is not unique_object:
+#            return PurpleTypeProxy(key, v, ())
 
         # second priority:
         # if not an annotation value, return a normal local variable
@@ -292,8 +277,50 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
 
         cls = type.__new__(metacls, name, bases, classdict)
 
+#        print(' legacy __annotations__')
+#        print(cls.__annotations__)
+
         print(' get_annotations STRING')
         print(annotationlib.get_annotations(cls, format = annotationlib.Format.STRING))
+
+#        print(' get_annotations VALUE')
+#        print(annotationlib.get_annotations(cls, format = annotationlib.Format.VALUE))
+
+        print(' get_annotations FWDREF')
+        print(annotationlib.get_annotations(cls, format = annotationlib.Format.FORWARDREF))
+
+        if name == 'SmokeTest':
+            print('ttt =', getattr(cls, 'ttt', None))
+            # delattr(cls, 'counter')
+
+            print(' get_annotations FWDREF 2')
+            f = annotationlib.get_annotations(cls, format = annotationlib.Format.FORWARDREF)
+            print(f)
+            print(' evaluating rules')
+            print([(r.evaluate() if isinstance(r, annotationlib.ForwardRef) else r) for r in f['rules']])
+
+            for k,v in f.items():
+                print(k)
+                if isinstance(v, annotationlib.ForwardRef):
+                    class TTT:
+                        port = 10
+                    class COUNTER:
+                        port = 20
+                    cls._ = TTT
+                    cls.counter = COUNTER
+                    print(v.evaluate())
+
+        fra = annotationlib.get_annotations(cls, format = annotationlib.Format.FORWARDREF)
+        cls.__annotations__ = dict()
+        for k,v in fra.items():
+            print('  annotation', k)
+            if isinstance(v, list):
+                vv = [(r.evaluate() if isinstance(r, annotationlib.ForwardRef) else r) for r in v]
+            elif isinstance(v, annotationlib.ForwardRef):
+                vv = v.evaluate()
+            else:
+                vv = v
+            cls.__annotations__[k] = vv
 
         ''' annotations as string is a dict of strings
             but it does not include the initial-value
@@ -309,26 +336,35 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
                     store it as a proxy
                     evaluate it at the end when annotations are known
                     may struggle to support arbitrary expressions in bindings?
+                    maybe get_annotate_from_class_namespace() will work during?
             - how do we declare state with string name?
                 maybe use the namespace to detect a reserved word
                 Array[] uses this
             - cannot put f-strings in annotations (minor annoyance for rules)
             - cannot put and/or/if-else in annotations
 
-            sequence of class declaration:
-            1. __prepare__() creates namespace
-            2. python parses class declaration
-                adds annotations as strings to its own private collection
-                adds class variables when initial values are defined
-                    can these refer to "_"? eg x: (Integer[...] * 10) = [0 for k in _]
-                    that looks pretty hard to support since we will not know the type early enough
-                    but might work for a generator x: (Integer[...] * 10) = (0 for k in _)
-                calls the << >> operators when standalone bindings are declared
-            3. __new__() creates the class
-                go through annotation strings
-                    get types
-                    evaluate bindings
-                    then refresh initial values and delete class variables
+            both FORWARDREF and VALUE can find members of the class (eg rule methods)
+            well this was true but not any more
+            seems that it depends on other annotations, unclear if trustworthy
+
+            both FORWARDREF and VALUE may evaluate using initial values, which is a problem
+            so need to remove these before calling?
+            yes this works, FORWARDREF reverts to variable name
+
+            evaluating FORWARDREF is a bit of a pain, because it may partially do it
+            eg create a list of FORWARDREF
+
+            can set class variables and FORWARDREF.eval() will pick these up
+
+            do I need my namespace class any more?
+            maybe I outlaw _ in initial values?
+                probably there are alternatives
+            maybe gets rid of the namespace stack too?
+                maybe not; needed for bindings and maybe for create-state-from-string-name
+
+            above is working for SmokeTest, Bomb, Record, Modulo (fails for Port)
+                keeps namespace, but only because I need a place for bindings
+                converts __annotations__, only because downstream functions not yet modified
         '''
 
         cls._dp_state_types = dict()

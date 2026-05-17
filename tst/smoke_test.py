@@ -9,11 +9,13 @@ Smoke test
 
 from purple import Model, Integer
 
+xxx = 57
 
 class SmokeTest(Model):
     counter: Integer[10] = 0
     rules: [increment_counter]
-    sss: (A | None) >> B
+#    ttt: Integer[xxx][_.port << counter.port] = (x*x for x in range(xxx))
+#    sss: (A | None) >> B
 
     def increment_counter(self):
         self.counter = (self.counter + 1) % 10
