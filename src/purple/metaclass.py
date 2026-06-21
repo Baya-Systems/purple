@@ -218,6 +218,7 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         unique_obj = common.UniqueObject
 
         # FIXME some of these are only needed during evaluation (raw)
+        # so we can do a better job of metacls.evaluating
         cls._dp_raw_annotations = dict()
         cls._dp_raw_bindings = list()
         cls._dp_raw_initial_value = dict()
@@ -228,11 +229,12 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         cls._dp_clock_declarations = dict()
 
         # get all state element declarations
-        fmt = annotationlib.Format.FORWARDREF
-        annotations = annotationlib.get_annotations(cls, format = fmt)
+        fwdref = annotationlib.Format.FORWARDREF
+        strref = annotationlib.Format.STRING
+        annotations = annotationlib.get_annotations(cls, format = fwdref)
 
         # capture raw initial values, which are evaluated on the fly by python,
-        # and replace with Proxy objects for binding evaluation\
+        # and replace with Proxy objects for binding evaluation
         riv = cls._dp_raw_initial_value
         for n,a in annotations.items():
             riv[n] = getattr(cls, n, unique_obj)
@@ -241,8 +243,7 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         # FIXME
         # problem here?  want to preserve non-Purple type annotations
         # and non-Purple class variables
-        # so if any annotation resolves to something that isn't a Purple Model
-        # then don't replace it
+        # so if any annotation resolves to something that isn't a Purple Model then don't replace it
 
         # FIXME
         # also need to replace all state from base classes
@@ -263,7 +264,7 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
                         try:
                             x.append(aa.evaluate())
                         except:
-                            x.append(aa.evaluate(format = annotationlib.Format.STRING))
+                            x.append(aa.evaluate(format = strref))
                     else:
                         x.append(aa)
                 cls._dp_raw_annotations[n] = x
@@ -287,19 +288,6 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         cls._dp_add_clocks_from_annotations()
 
         # now do the initial-values, later so that type changes are visible to bases
-        ''' huh? need to do initial values first, because they are not lazy so will
-            already exist as class variables before looking at annotations
-
-            so why was it this way round before?
-
-            a later base class could change the type of a state element
-            if that happens, the previous initial value must be invalidated
-            so at this point we already know the types
-
-            this seems correct
-            it uses getattr(base_class, element_name) for finding the initial-value
-            I should probably replace with some other storage
-        '''
         for base in reversed(bases):
             if isinstance(base, metacls):
                 cls.update_dp_initial_value_from_base(base)
@@ -321,9 +309,6 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         records any generator expressions so that they can be iterated out as soon as
         the annotation is known
         '''
-        if not isinstance(index, tuple):
-            index = (index,)
-        PurpleHierarchicalMetaClass.namespace_stack[-1].last_getitem_index = index
         return cls
 
     def __rshift__(cls, handler_name):
