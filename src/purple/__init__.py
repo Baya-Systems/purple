@@ -23,10 +23,13 @@ FIXME
         do not like this syntax.  should be a leaf.  should be hidden
         only possible for commutative operations eg not for (+1) and (*2)
         so maybe make a very specific integer-with-multiple-additions only
+        possibly things like Tuple[] also have commutative operations eg append an item and modify another item
         no idea how to achieve this
-            maybe override += and -= on an IntegerLeaf object which stores 2 separate values internally
-            but still, how do we decide which value to change?
-            maybe one process calls += and the other -= and we have num_incr and num_decr
+            only relevant to clocked-simulator (but should work for atomic-rule)
+            maybe we need to define a CommutativeOperation base class
+            and store state changes as type-specific subclass objects (when needed) in LeafStateChange
+            then in Clock.event() we would merge commutative ops
+            which means finding them first across multiple invocation objects
     add a Dictionary leaf type basically the same as Tuple
     declaring a state type as Tuple not Tuple[XYZ] fails silently
     start rules

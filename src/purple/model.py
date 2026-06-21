@@ -137,7 +137,7 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
         fills in cls._dp_rule_names
         constructs rule objects as a declaration-time test, on final call
         '''
-        for state_element_name,state_element_type in cls.__annotations__.items():
+        for state_element_name,state_element_type in cls._dp_raw_annotations.items():
             if state_element_name in ('rules', 'non_rules'):
                 for rule_method in state_element_type:
                     if isinstance(rule_method, str):
@@ -158,7 +158,7 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
             cls._dp_construct_rules()
 
     @classmethod
-    def _dp_add_bindings_from_base(cls, base, raw_cls_bindings):
+    def _dp_add_bindings_from_base(cls, base):
         ''' called on declaration of a Model subclass, once for every base
         '''
         cls._dp_bindings.extend(base._dp_bindings)
@@ -168,7 +168,9 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
         ''' called on declaration of a Model subclass
 
         FIXME:
-            unclear how to deal with collisions/fans/bases: ordered list and take last one?
+            unclear how to deal with collisions/fan-in/fan-out/bases: ordered list and take last one?
+            replace LHS?
+            use +>> and +<< operators for fans?
         '''
         for b in raw_cls_bindings:
             cls._dp_bindings.append(b.convert_to_names())
@@ -183,7 +185,7 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
     def _dp_add_clocks_from_annotations(cls):
         ''' called on declaration of a Model subclass
         '''
-        for k,v in cls.__annotations__.items():
+        for k,v in cls._dp_raw_annotations.items():
             if isinstance(v, clock.Clock):
                 cls._dp_clock_declarations[k] = v
 

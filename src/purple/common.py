@@ -242,7 +242,7 @@ class PurpleComponent:
     def _dp_add_state_from_annotations(cls):
         ''' called on declaration of a Model or Record subclass, after bases are incorporated
         '''
-        for state_element_name,state_element_type in cls.__annotations__.items():
+        for state_element_name,state_element_type in cls._dp_raw_annotations.items():
             if inspect.isclass(state_element_type) and issubclass(state_element_type, PurpleComponent):
                 cls._dp_state_types[state_element_name] = state_element_type
 
@@ -263,11 +263,7 @@ class PurpleComponent:
             for state_element_name,state_element_type in base_state:
                 if state_element_type == cls._dp_state_types.get(state_element_name, UniqueObject):
                     if base is cls:
-                        try:
-                            base_initial_value = getattr(cls, state_element_name)
-                            delattr(cls, state_element_name)
-                        except AttributeError:
-                            base_initial_value = UniqueObject
+                        base_initial_value = cls._dp_raw_initial_value.get(state_element_name, UniqueObject)
                     else:
                         base_initial_value = base._dp_initial_value[state_element_name]
                     current_initial_value = cls._dp_initial_value.get(state_element_name, UniqueObject)
@@ -285,11 +281,11 @@ class PurpleComponent:
     def _dp_add_rules_from_annotations(cls, typeproxy_class):
         ''' called on declaration of a Record subclass, once for every base
         '''
-        if 'rules' in cls.__annotations__ or 'non_rules' in cls.__annotations__:
+        if 'rules' in cls._dp_raw_annotations or 'non_rules' in cls._dp_raw_annotations:
             assert False, f'rules only possible in Model subclass, not {cls}'
 
     @classmethod
-    def _dp_add_bindings_from_base(cls, base, raw_cls_bindings):
+    def _dp_add_bindings_from_base(cls, base):
         ''' called on declaration of a Record subclass, once for every base
         '''
         assert not base._dp_bindings, f'bindings only possible in Model subclass, not {cls}'

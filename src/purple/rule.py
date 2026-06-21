@@ -5,12 +5,10 @@ Purple implementation
 ======================
 
 Purple state-update rules
-
-FIXME
-    should probably use inspect rather than __annotations__ for param extraction
 '''
 
 from . import common
+import annotationlib
 
 
 class Rule:
@@ -172,7 +170,7 @@ def construct_all(instance, method_name):
     instance may be a class (for declaration-time testing) or an object being elaborated
     '''
     the_method = getattr(instance, method_name)
-    annots = getattr(the_method, '__annotations__', {})
+    annots = annotationlib.get_annotations(the_method)
     a_list = [a for a in annots.items() if a[0] != 'return']
     return [Rule(instance, the_method, pd) for pd in construct_all_recursive(a_list)]
 
