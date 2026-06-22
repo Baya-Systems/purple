@@ -171,9 +171,8 @@ class Binding:
 def AddToState(**cls_variables):
     class ATSMetaClass(type):
         @classmethod
-        def __prepare__(metacls, name, bases, cls = cls_variables.copy()):
-            ns = cls
-            return ns
+        def __prepare__(metacls, name, bases, cls_namespace = cls_variables.copy()):
+            return cls_namespace
 
     def default_nameconv(cls, statename, clsv = '_'.join(str(v) for v in cls_variables.values())):
         return f'{statename}_{clsv}'
@@ -181,7 +180,7 @@ def AddToState(**cls_variables):
     def init_subclass(cls, **kwargs):
         print('init-subclass', cls)
         current_dp_cls = PurpleHierarchicalMeta.namespace_stack[-1]
-        current_dp_cls['__dp_addtostate_classes'].append(cls)
+        current_dp_cls['_dp_addtostate_classes'].append(cls)
 
     cls_variables['purple_statename_conversion'] = classmethod(default_nameconv)
     cls_variables['__init_subclass__'] = classmethod(init_subclass)
@@ -207,7 +206,7 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
     @classmethod
     def __prepare__(metacls, name, bases):
         ns = super().__prepare__(name, bases)
-        ns['__dp_addtostate_classes'] = []
+        ns['_dp_addtostate_classes'] = []
         metacls.namespace_stack.append(ns)
         return ns
 
@@ -235,18 +234,28 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
 
         # capture raw initial values, which are evaluated on the fly by python,
         # and replace with Proxy objects for binding evaluation
-        riv = cls._dp_raw_initial_value
         for n,a in annotations.items():
-            riv[n] = getattr(cls, n, unique_obj)
+            cls._dp_raw_initial_value[n] = getattr(cls, n, unique_obj)
             setattr(cls, n, PurpleTypeProxy(n, unique_obj, ()))
 
         # FIXME
-        # problem here?  want to preserve non-Purple type annotations
+        # problem here? want to preserve non-Purple type annotations
         # and non-Purple class variables
         # so if any annotation resolves to something that isn't a Purple Model then don't replace it
 
+        # add proxies for state elements in base classes
+        # and detect any overridden initial values (which might not have a type annotation)
+        for base in bases:
+            if isinstance(base, metacls):
+                for n in base._dp_state_types:
+                    if n not in cls._dp_raw_initial_value:
+                        # order of bases does not matter; we just need all the hierarchical state names
+                        iv = getattr(cls, n, unique_obj)
+                        if (iv is not unique_obj) and (not isinstance(iv, PurpleTypeProxy)):
+                            cls._dp_raw_initial_value[n] = iv
+                    setattr(cls, n, PurpleTypeProxy(n, unique_obj, ()))
+
         # FIXME
-        # also need to replace all state from base classes
         # and from addtostate nested classes
 
         # now evaluate the class annotations
@@ -271,6 +280,9 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
             else:
                 # functions and other things that got evaluated first time
                 cls._dp_raw_annotations[n] = a
+
+        # FIXME
+        # and evaluate within addtostate nested classes
 
         # get state, etc from all base classes in reverse order so that
         # more recent overrides older in the base class list

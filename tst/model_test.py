@@ -68,9 +68,9 @@ def the_test():
     for x in top.a, top.b.first, top.b.second, top.c.first, top.c.second:
         x.first = False
         x.second = 0
-        x.third = SubSub.third.A
+        x.third = SubSub.SS_Enum.enum_class.A
     for x in top.b, top.c:
-        x.third = Sub.third.Y
+        x.third = Sub.S_Enum.enum_class.Y
     top.d = False
 the_rule.invoke()
 
@@ -79,9 +79,9 @@ def the_test():
     for x in top.a, top.b.first, top.b.second, top.c.first, top.c.second:
         assert x.first is False
         assert x.second == 0
-        assert x.third == SubSub.third.A
+        assert x.third == SubSub.SS_Enum.enum_class.A
     for x in top.b, top.c:
-        assert x.third == Sub.third.Y
+        assert x.third == Sub.S_Enum.enum_class.Y
     assert top.d is False
 the_rule.invoke()
 
@@ -89,10 +89,10 @@ def the_test():
     print('modifying some leaf state')
     top.a.first = True
     top.b.first.second = 5
-    top.b.second.third = SubSub.third.C
+    top.b.second.third = SubSub.SS_Enum.enum_class.C
     top.c.first.first = True
     top.c.second.second = 6
-    top.c.third = Sub.third.X
+    top.c.third = Sub.S_Enum.enum_class.X
     top.d = True
 the_rule.invoke()
 
@@ -101,9 +101,9 @@ def the_test():
     for x in top.a, top.b.first, top.b.second, top.c.first, top.c.second:
         assert x.first is (True if x in (top.a, top.c.first) else False)
         assert x.second == (5 if x is top.b.first else (6 if x is top.c.second else 0))
-        assert x.third == (SubSub.third.C if x is top.b.second else SubSub.third.A)
+        assert x.third == (SubSub.SS_Enum.enum_class.C if x is top.b.second else SubSub.SS_Enum.enum_class.A)
     for x in top.b, top.c:
-        assert x.third == (Sub.third.X if x is top.c else Sub.third.Y)
+        assert x.third == (Sub.S_Enum.enum_class.X if x is top.c else Sub.S_Enum.enum_class.Y)
     assert top.d is True
 the_rule.invoke()
 
@@ -147,6 +147,7 @@ class Top(FirstBase):
     top_b: Integer[...] = 0
     rules: [r0]
     def r0(self): self.print('r0')
+
 
 top = ThirdBase()
 assert top.third_b == 3

@@ -30,13 +30,14 @@ import random
 class SubSub(Record):
     first: Boolean
     second: Integer[10] = 3
-    third: Enumeration['subsub-enum', 'A B C']
+    SS_Enum = enum.Enum('subsub-enum', 'A B C')
+    third: Enumeration[SS_Enum]
 
 class Sub(Record):
     first: SubSub
     second: SubSub
     S_Enum = enum.Enum('sub-enum', 'W X Y')
-    third: Enumeration [S_Enum] = S_Enum.Y
+    third: Enumeration[S_Enum] = S_Enum.Y
 
 class Top(Record):
     a: SubSub
@@ -78,36 +79,36 @@ print('setting all leaf state to something else')
 for x in top.a, top.b.first, top.b.second, top.c.first, top.c.second:
     x.first = False
     x.second = 0
-    x.third = SubSub.third.A
+    x.third = SubSub.SS_Enum.A
 for x in top.b, top.c:
-    x.third = Sub.third.Y
+    x.third = Sub.S_Enum.Y
 top.d = False
 
 print('checking all leaf state')
 for x in top.a, top.b.first, top.b.second, top.c.first, top.c.second:
     assert x.first is False
     assert x.second == 0
-    assert x.third == SubSub.third.A
+    assert x.third == SubSub.SS_Enum.A
 for x in top.b, top.c:
-    assert x.third == Sub.third.Y
+    assert x.third == Sub.S_Enum.Y
 assert top.d is False
 
 print('modifying some leaf state')
 top.a.first = True
 top.b.first.second = 5
-top.b.second.third = SubSub.third.C
+top.b.second.third = SubSub.SS_Enum.C
 top.c.first.first = True
 top.c.second.second = 6
-top.c.third = Sub.third.X
+top.c.third = Sub.S_Enum.X
 top.d = True
 
 print('checking all leaf state again')
 for x in top.a, top.b.first, top.b.second, top.c.first, top.c.second:
     assert x.first is (True if x in (top.a, top.c.first) else False)
     assert x.second == (5 if x is top.b.first else (6 if x is top.c.second else 0))
-    assert x.third == (SubSub.third.C if x is top.b.second else SubSub.third.A)
+    assert x.third == (SubSub.SS_Enum.C if x is top.b.second else SubSub.SS_Enum.A)
 for x in top.b, top.c:
-    assert x.third == (Sub.third.X if x is top.c else Sub.third.Y)
+    assert x.third == (Sub.S_Enum.X if x is top.c else Sub.S_Enum.Y)
 assert top.d is True
 
 print('set leaf and hierarchical state to undef')
@@ -136,20 +137,20 @@ else:
 
 
 print('creating transient Record from dict and setting state to it')
-my_subsub = SubSub(first = False, second = 8, third = SubSub.third.B)
+my_subsub = SubSub(first = False, second = 8, third = SubSub.SS_Enum.B)
 top.b.second = my_subsub
-top.a = SubSub(first = True, second = 9, third = SubSub.third.C)
-my_sub = Sub(first = SubSub(), third = Sub.third.W)
+top.a = SubSub(first = True, second = 9, third = SubSub.SS_Enum.C)
+my_sub = Sub(first = SubSub(), third = Sub.S_Enum.W)
 top.c = my_sub
 
 print('checking')
 assert top.b.second.first is False
 assert top.b.second.second == 8
-assert top.b.second.third == SubSub.third.B
+assert top.b.second.third == SubSub.SS_Enum.B
 assert top.a.first is True
 assert top.a.second == 9
-assert top.a.third == SubSub.third.C
-assert top.c.third == Sub.third.W
+assert top.a.third == SubSub.SS_Enum.C
+assert top.c.third == Sub.S_Enum.W
 
 print('checking undefs')
 for cc in top.c.first, top.c.second:
@@ -170,16 +171,16 @@ for cc in top.c.first, top.c.second:
         assert False
 
 print('creating transient Record from Record and setting state to it')
-my_subsub = SubSub(first = UnDefined, second = 4, third = SubSub.third.A)
-my_sub = Sub(first = my_subsub, third = Sub.third.W)
-assert my_sub.third == Sub.third.W
+my_subsub = SubSub(first = UnDefined, second = 4, third = SubSub.SS_Enum.A)
+my_sub = Sub(first = my_subsub, third = Sub.S_Enum.W)
+assert my_sub.third == Sub.S_Enum.W
 assert my_sub.first.second == 4
 top.b = my_sub
 
 print('checking')
 assert top.b.first.second == 4
-assert top.b.first.third == SubSub.third.A
-assert top.b.third == Sub.third.W
+assert top.b.first.third == SubSub.SS_Enum.A
+assert top.b.third == Sub.S_Enum.W
 
 try:
     z = top.b.second.first
@@ -201,71 +202,71 @@ assert tt.e == 5
 assert tt.a.second == 3
 
 tt = Top(
-    b = Sub(third = Sub.third.W, first = SubSub(first = False)),
+    b = Sub(third = Sub.S_Enum.W, first = SubSub(first = False)),
     c = Sub(second = SubSub(first = True, second = 1)),
 )
 assert tt.e == 7
-assert tt.b.third is Sub.third.W
+assert tt.b.third is Sub.S_Enum.W
 assert tt.b.first.first is False
 assert tt.b.first.second == 3
-assert tt.c.third is Sub.third.Y
+assert tt.c.third is Sub.S_Enum.Y
 assert tt.c.second.first is True
 assert tt.c.second.second == 1
 
 print('calling update')
 tt.update(e = 6)
 assert tt.e == 6
-tt.update(e = 5, b = Sub(third = Sub.third.X, first = SubSub(first = True)))
+tt.update(e = 5, b = Sub(third = Sub.S_Enum.X, first = SubSub(first = True)))
 assert tt.e == 5
 assert tt.b.first.first
-assert tt.b.third is Sub.third.X
+assert tt.b.third is Sub.S_Enum.X
 
 print('hierarchical defaults')
 class NewTop(Top):
-    a: SubSub = dict(second = 9, third = SubSub.third.C)
+    a: SubSub = dict(second = 9, third = SubSub.SS_Enum.C)
 
 nt = NewTop()
 assert nt.e == 7
 assert nt.a.second == 9
-assert nt.a.third == SubSub.third.C
-assert nt.b.third == Sub.third.Y
+assert nt.a.third == SubSub.SS_Enum.C
+assert nt.b.third == Sub.S_Enum.Y
 
 
 print('equality test')
-my_subsub = SubSub(first = UnDefined, second = 4, third = SubSub.third.A)
-my_sub = Sub(first = my_subsub, third = Sub.third.W)
+my_subsub = SubSub(first = UnDefined, second = 4, third = SubSub.SS_Enum.A)
+my_sub = Sub(first = my_subsub, third = Sub.S_Enum.W)
 assert top.b == my_sub
 assert top.b.first == my_subsub
-my_subsub = SubSub(first = UnDefined, second = 2, third = SubSub.third.A)
-my_sub = Sub(first = my_subsub, third = Sub.third.W)
+my_subsub = SubSub(first = UnDefined, second = 2, third = SubSub.SS_Enum.A)
+my_sub = Sub(first = my_subsub, third = Sub.S_Enum.W)
 assert top.b != my_sub
 
 
 print('shallow copy')
-top.c.third = Sub.third.W
+top.c.third = Sub.S_Enum.W
 c_copy = top.c.copy()
 assert c_copy == top.c
-c_copy.third = Sub.third.X  # first-level leaf state
+c_copy.third = Sub.S_Enum.X  # first-level leaf state
 assert c_copy != top.c
 
-top.c.third = Sub.third.W
+top.c.third = Sub.S_Enum.W
 top_copy = top.copy()
 assert top_copy == top
-top_copy.c.third = Sub.third.Y  # second-level leaf state changes in both
+top_copy.c.third = Sub.S_Enum.Y  # second-level leaf state changes in both
 assert top_copy == top
 
 
 print('deep copy')
-top.c.third = Sub.third.W
+top.c.third = Sub.S_Enum.W
 c_copy = top.c.deep_copy()
 assert c_copy == top.c
-c_copy.third = Sub.third.X  # first-level leaf state
+c_copy.third = Sub.S_Enum.X  # first-level leaf state
 assert c_copy != top.c
 
-top.c.third = Sub.third.W
+top.c.third = Sub.S_Enum.W
 top_copy = top.deep_copy()
 assert top_copy == top
-top_copy.c.third = Sub.third.Y  # second-level leaf state changes in both
+top_copy.c.third = Sub.S_Enum.Y  # second-level leaf state changes in both
 assert top_copy != top
 
 

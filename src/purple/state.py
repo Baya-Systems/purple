@@ -57,11 +57,6 @@ def Enumeration(*args, **kwargs):
         def _dp_all_possible_values(cls):
             return cls.enum_class
 
-        @classmethod
-        def _dp_on_instantiation(cls, owner_class, name_in_owner):
-            # put the actual Python enum class into any class where the enum is instantiated
-            setattr(owner_class, name_in_owner, cls.enum_class)
-
     cls_name = 'Enum_FIXME'
     return leaf.Leaf.subclass(cls_name, EnumLeafState)
 

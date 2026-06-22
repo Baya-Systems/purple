@@ -193,8 +193,8 @@ class FrozenRecord(Record):
             # construct a new type
             classname = record_cls.__name__ + 'Frozen'
             bases = cls, record_cls
-            namespace = type(cls).__prepare__(classname, bases)
-            frozen_cls = type(cls)(classname, bases, namespace)
+            namespace = metaclass.PurpleHierarchicalMetaClass.__prepare__(classname, bases)
+            frozen_cls = metaclass.PurpleHierarchicalMetaClass(classname, bases, namespace)
 
             frozen_cls._dp_record_class = record_cls
             cls._dp_class_cache[record_cls] = frozen_cls
