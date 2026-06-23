@@ -16,6 +16,7 @@ contains the actual client objects (rules) sensitive to the clock
 '''
 
 import inspect
+import annotationlib
 
 from . import rule
 
@@ -35,7 +36,7 @@ class Clock:
         # called on declaration
         if not isinstance(client_refs, tuple):
             client_refs = (client_refs,)
-        return cls(client_refs)
+        return cls(tuple(client_refs))
 
     def elaborate(self, owner):
         '''create a useable clock object with a list of rule objects
@@ -55,19 +56,25 @@ class Clock:
                 rule_name = cref.__name__
                 rule_owner = owner
             else:
-                client = owner
-                for n in cref.name:
-                    rule_owner = client
-                    try:
-                        client = getattr(client, n)
-                    except AttributeError:
-                        client = client._dp_clocks[n]
-                if isinstance(client, Clock):
-                    client.driven_by_another_clock = True
-                    rules.extend(client.rules)
+                if isinstance(cref, annotationlib.ForwardRef):
+                    # possible eg if an abstract base class declared a clock method
+                    dotted_name = cref.evaluate(format = annotationlib.Format.STRING)
+                    name = dotted_name.split('.')
+                else:
+                    # cref should be a proxy object
+                    name = cref.name
+
+                # climb up the hierarchical tree to get the the driven clock or rule-method
+                rule_owner = owner
+                for name_element in name[:-1]:
+                    rule_owner = getattr(rule_owner, name_element)
+
+                if the_clock := rule_owner._dp_clocks.get(name[-1], None):
+                    the_clock.driven_by_another_clock = True
+                    rules.extend(the_clock.rules)
                     continue
                 else:
-                    rule_name = cref.name[-1]
+                    rule_name = name[-1]
 
             rules.extend(rule.construct_all(rule_owner, rule_name))
 

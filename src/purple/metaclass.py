@@ -31,7 +31,12 @@ class PurpleComponentMetaClass(type):
 
     def __or__(cls, other_cls):
         'create a Union of a purple state classes and another state class'
-        return UnionMetaClass.union_base_class | cls | other_cls
+        from . import union
+        if other_cls is None:
+            from . import state
+            return union.Union | state.Constant[None] | cls
+        else:
+            return union.Union | cls | other_cls
 
     def __rmul__(cls, array_length):
         return PurpleComponentMetaClass.generic_array[array_length, cls]
@@ -44,16 +49,6 @@ class PurpleLeafMetaClass(PurpleComponentMetaClass):
 
 
 class UnionMetaClass(PurpleComponentMetaClass):
-    union_base_class = None
-
-    def __new__(metacls, name, bases, classdict):
-        cls = type.__new__(metacls, name, bases, classdict)
-        if metacls.union_base_class is None:
-            # this is done to break circular import
-            assert name == 'Union'
-            metacls.union_base_class = cls
-        return cls
-
     def __or__(cls, other_cls):
         'create a Union of a union and another union or purple state class'
         return cls.make_class(other_cls)
@@ -227,14 +222,9 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         cls._dp_bindings = list()
         cls._dp_clock_declarations = dict()
 
-        # get all state element declarations
-        fwdref = annotationlib.Format.FORWARDREF
-        strref = annotationlib.Format.STRING
-        annotations = annotationlib.get_annotations(cls, format = fwdref)
-
         # capture raw initial values, which are evaluated on the fly by python,
         # and replace with Proxy objects for binding evaluation
-        for n,a in annotations.items():
+        for n in annotationlib.get_annotations(cls, format = annotationlib.Format.STRING):
             cls._dp_raw_initial_value[n] = getattr(cls, n, unique_obj)
             setattr(cls, n, PurpleTypeProxy(n, unique_obj, ()))
 
@@ -243,43 +233,52 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         # and non-Purple class variables
         # so if any annotation resolves to something that isn't a Purple Model then don't replace it
 
-        # add proxies for state elements in base classes
-        # and detect any overridden initial values (which might not have a type annotation)
+        # state elements in base classes already have proxies which are visible to lazy evaluation
+        # but the new cls may override an initial value by just setting a class variable
+        # without a type annotation
         for base in bases:
+            # order of bases does not matter; we just need all the hierarchical state names
             if isinstance(base, metacls):
                 for n in base._dp_state_types:
                     if n not in cls._dp_raw_initial_value:
-                        # order of bases does not matter; we just need all the hierarchical state names
                         iv = getattr(cls, n, unique_obj)
                         if (iv is not unique_obj) and (not isinstance(iv, PurpleTypeProxy)):
                             cls._dp_raw_initial_value[n] = iv
-                    setattr(cls, n, PurpleTypeProxy(n, unique_obj, ()))
 
         # FIXME
         # and from addtostate nested classes
 
         # now evaluate the class annotations
+        annotations = annotationlib.get_annotations(cls, format = annotationlib.Format.FORWARDREF)
         for n,a in annotations.items():
-            # set underscore to the name of the state element
+            # set underscore to the name of the state element and re-evaluate if necessary
             setattr(cls, '_', getattr(cls, n))
             # evaluate will also create any bindings that have been declared
             if isinstance(a, annotationlib.ForwardRef):
                 cls._dp_raw_annotations[n] = a.evaluate()
             elif isinstance(a, list):
-                # special case; forward-ref will return a list
+                # special case; forward-ref will return a list (eg for "rules") which can contain
+                #   - evaluated things like methods
+                #   - proxy objects eg names of methods in subcomponent
+                #   - forward-ref eg name of a method that will be declared in a subclass
                 x = []
                 for aa in a:
                     if isinstance(aa, annotationlib.ForwardRef):
                         try:
                             x.append(aa.evaluate())
                         except:
-                            x.append(aa.evaluate(format = strref))
+                            x.append(aa.evaluate(format = annotationlib.Format.STRING))
                     else:
                         x.append(aa)
                 cls._dp_raw_annotations[n] = x
             else:
                 # functions and other things that got evaluated first time
                 cls._dp_raw_annotations[n] = a
+        # clk: Clock[y, z.a.b]    is failing
+        #   lazy evaluation will first try y and z.a.b and may return for each either a forward-ref or a proxy or a method
+        #   then it will pass these to Clock.__class_getitem__ which just saves them
+        #   forward-ref doesn't then work, needs to be re-evaluated to a string/turned into a proxy
+        #   confused - should only get a fwd-ref if y refers to an undefined method
 
         # FIXME
         # and evaluate within addtostate nested classes
