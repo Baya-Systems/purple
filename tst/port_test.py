@@ -106,11 +106,14 @@ class Producer(Model):
 
 
 class Consumer(Model):
+    print('before')
     last_value: Integer[10]
     port_in: Port[Integer[10]] >> port_in_handler
 
     def port_in_handler(self, v):
         self.last_value = v
+    print('after')
+print('made class')
 
 
 class Top(cli.Test.Top):

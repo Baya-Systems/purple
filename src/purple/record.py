@@ -164,10 +164,10 @@ class Record(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMet
         assert not base._dp_clock_declarations, f'clocks only possible in Model subclass, not {cls}'
 
     @classmethod
-    def _dp_add_clocks_from_annotations(cls):
+    def _dp_add_clocks_from_annotations(cls, raw_annotations):
         ''' called on declaration of a Record subclass
         '''
-        if any(isinstance(v, clock.Clock) for v in cls._dp_raw_annotations.values()):
+        if any(isinstance(v, clock.Clock) for v in raw_annotations.values()):
             assert False, f'clocks only possible in Model subclass, not {cls}'
 
 

@@ -163,12 +163,8 @@ def Array(array_length, cls):
         _dp_array_slice_range = staticmethod(slice_range)
 
         for i in range(array_length):
-            class Element(metaclass.AddToState(attrname = to_attrname(i), ArrayType = cls)):
-                @classmethod
-                def purple_statename_conversion(cls, _):
-                    return cls.attrname
-
-                element: ArrayType
+            class Element(metaclass.AddToState(e_name = to_attrname(i), ArrayType = cls)):
+                e: ArrayType
 
     return TheArray
 

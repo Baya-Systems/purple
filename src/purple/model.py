@@ -126,7 +126,7 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
         cls._dp_rule_names |= base._dp_rule_names
 
     @classmethod
-    def _dp_add_rules_from_annotations(cls, typeproxy_class):
+    def _dp_add_rules_from_annotations(cls, typeproxy_class, raw_annotations):
         ''' called on declaration of a Model subclass
 
         cls annotations may have a list of rules, each being one of
@@ -137,7 +137,7 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
         fills in cls._dp_rule_names
         constructs rule objects as a declaration-time test, on final call
         '''
-        for state_element_name,state_element_type in cls._dp_raw_annotations.items():
+        for state_element_name,state_element_type in raw_annotations.items():
             if state_element_name in ('rules', 'non_rules'):
                 for rule_method in state_element_type:
                     if isinstance(rule_method, str):
@@ -182,10 +182,10 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
         cls._dp_clock_declarations.update(base._dp_clock_declarations)
 
     @classmethod
-    def _dp_add_clocks_from_annotations(cls):
+    def _dp_add_clocks_from_annotations(cls, raw_annotations):
         ''' called on declaration of a Model subclass
         '''
-        for k,v in cls._dp_raw_annotations.items():
+        for k,v in raw_annotations.items():
             if isinstance(v, clock.Clock):
                 cls._dp_clock_declarations[k] = v
 

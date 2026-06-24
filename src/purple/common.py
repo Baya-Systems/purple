@@ -239,16 +239,16 @@ class PurpleComponent:
         cls._dp_state_types.update(base._dp_state_types)
 
     @classmethod
-    def _dp_add_state_from_annotations(cls):
+    def _dp_add_state_from_annotations(cls, raw_annotations):
         ''' called on declaration of a Model or Record subclass, after bases are incorporated
         '''
-        for state_element_name,state_element_type in cls._dp_raw_annotations.items():
+        for state_element_name,state_element_type in raw_annotations.items():
             if inspect.isclass(state_element_type) and issubclass(state_element_type, PurpleComponent):
                 cls._dp_state_types[state_element_name] = state_element_type
 
 
     @classmethod
-    def update_dp_initial_value_from_base(cls, base):
+    def update_dp_initial_value_from_base(cls, base, raw_initial_value):
         ''' called on declaration of a Model or Record subclass, once for every base
 
         as we step through the base classes we collect overrides of initial values
@@ -263,7 +263,7 @@ class PurpleComponent:
             for state_element_name,state_element_type in base_state:
                 if state_element_type == cls._dp_state_types.get(state_element_name, UniqueObject):
                     if base is cls:
-                        base_initial_value = cls._dp_raw_initial_value.get(state_element_name, UniqueObject)
+                        base_initial_value = raw_initial_value.get(state_element_name, UniqueObject)
                     else:
                         base_initial_value = base._dp_initial_value[state_element_name]
                     current_initial_value = cls._dp_initial_value.get(state_element_name, UniqueObject)
@@ -278,10 +278,10 @@ class PurpleComponent:
             assert False, f'rules only possible in Model subclass, not {cls}'
 
     @classmethod
-    def _dp_add_rules_from_annotations(cls, typeproxy_class):
+    def _dp_add_rules_from_annotations(cls, typeproxy_class, raw_annotations):
         ''' called on declaration of a Record subclass, once for every base
         '''
-        if 'rules' in cls._dp_raw_annotations or 'non_rules' in cls._dp_raw_annotations:
+        if 'rules' in raw_annotations or 'non_rules' in raw_annotations:
             assert False, f'rules only possible in Model subclass, not {cls}'
 
     @classmethod
