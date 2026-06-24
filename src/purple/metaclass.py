@@ -27,8 +27,6 @@ from . import common
 
 
 class PurpleComponentMetaClass(type):
-    generic_array = None
-
     def __or__(cls, other_cls):
         'create a Union of a purple state classes and another state class'
         from . import union
@@ -39,7 +37,8 @@ class PurpleComponentMetaClass(type):
             return union.Union | cls | other_cls
 
     def __rmul__(cls, array_length):
-        return PurpleComponentMetaClass.generic_array[array_length, cls]
+        from . import array
+        return array.Array[array_length, cls]
 
 
 class PurpleLeafMetaClass(PurpleComponentMetaClass):
@@ -173,8 +172,7 @@ def AddToState(**cls_variables):
         return f'{statename}_{clsv}'
 
     def init_subclass(cls, **kwargs):
-        print('init-subclass', cls)
-        current_dp_cls = PurpleHierarchicalMeta.namespace_stack[-1]
+        current_dp_cls = PurpleHierarchicalMetaClass.namespace_stack[-1]
         current_dp_cls['_dp_addtostate_classes'].append(cls)
 
     cls_variables['purple_statename_conversion'] = classmethod(default_nameconv)
@@ -224,9 +222,26 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
 
         # capture raw initial values, which are evaluated on the fly by python,
         # and replace with Proxy objects for binding evaluation
-        for n in annotationlib.get_annotations(cls, format = annotationlib.Format.STRING):
+        cls_annotations = annotationlib.get_annotations(cls, format = annotationlib.Format.STRING)
+        for n in cls_annotations:
             cls._dp_raw_initial_value[n] = getattr(cls, n, unique_obj)
             setattr(cls, n, PurpleTypeProxy(n, unique_obj, ()))
+
+        # and for addtostate nested classes
+        for ats_class in cls._dp_addtostate_classes:
+            ats_annotations = annotationlib.get_annotations(ats_class, format = annotationlib.Format.STRING)
+
+            for n in ats_annotations:
+                name_in_cls = ats_class.purple_statename_conversion(n)
+                cls._dp_raw_initial_value[name_in_cls] = getattr(ats_class, n, unique_obj)
+
+            for n in cls_annotations:
+                setattr(ats_class, n, PurpleTypeProxy(n, unique_obj, ()))
+
+            for n in ats_annotations:
+                cls_proxy = PurpleTypeProxy(name_in_cls, unique_obj, ())
+                setattr(cls, name_in_cls, cls_proxy)
+                setattr(ats_class, name_in_cls, cls_proxy)
 
         # FIXME
         # problem here? want to preserve non-Purple type annotations
@@ -245,43 +260,41 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
                         if (iv is not unique_obj) and (not isinstance(iv, PurpleTypeProxy)):
                             cls._dp_raw_initial_value[n] = iv
 
-        # FIXME
-        # and from addtostate nested classes
-
         # now evaluate the class annotations
-        annotations = annotationlib.get_annotations(cls, format = annotationlib.Format.FORWARDREF)
-        for n,a in annotations.items():
-            # set underscore to the name of the state element and re-evaluate if necessary
-            setattr(cls, '_', getattr(cls, n))
-            # evaluate will also create any bindings that have been declared
-            if isinstance(a, annotationlib.ForwardRef):
-                cls._dp_raw_annotations[n] = a.evaluate()
-            elif isinstance(a, list):
+        def eval(annot_name, annot, annot_class):
+            # re-evaluation with underscore may be needed for bindings
+            if isinstance(annot, annotationlib.ForwardRef):
+                annot_class._ = PurpleTypeProxy(annot_name, unique_obj, ())
+                return annot.evaluate()
+            elif isinstance(annot, list):
                 # special case; forward-ref will return a list (eg for "rules") which can contain
                 #   - evaluated things like methods
                 #   - proxy objects eg names of methods in subcomponent
                 #   - forward-ref eg name of a method that will be declared in a subclass
                 x = []
-                for aa in a:
+                for aa in annot:
                     if isinstance(aa, annotationlib.ForwardRef):
                         try:
+                            annot_class._ = PurpleTypeProxy(annot_name, unique_obj, ())
                             x.append(aa.evaluate())
                         except:
                             x.append(aa.evaluate(format = annotationlib.Format.STRING))
                     else:
                         x.append(aa)
-                cls._dp_raw_annotations[n] = x
+                return x
             else:
                 # functions and other things that got evaluated first time
-                cls._dp_raw_annotations[n] = a
-        # clk: Clock[y, z.a.b]    is failing
-        #   lazy evaluation will first try y and z.a.b and may return for each either a forward-ref or a proxy or a method
-        #   then it will pass these to Clock.__class_getitem__ which just saves them
-        #   forward-ref doesn't then work, needs to be re-evaluated to a string/turned into a proxy
-        #   confused - should only get a fwd-ref if y refers to an undefined method
+                return annot
 
-        # FIXME
+        cls_annotations = annotationlib.get_annotations(cls, format = annotationlib.Format.FORWARDREF)
+        cls._dp_raw_annotations = {n:eval(n, a, cls) for n,a in cls_annotations.items()}
+
         # and evaluate within addtostate nested classes
+        for ats_class in cls._dp_addtostate_classes:
+            ats_annotations = annotationlib.get_annotations(ats_class, format = annotationlib.Format.FORWARDREF)
+            cls._dp_raw_annotations |= {
+                ats_class.purple_statename_conversion(n):eval(n, a, ats_class) for n,a in ats_annotations.items()
+            }
 
         # get state, etc from all base classes in reverse order so that
         # more recent overrides older in the base class list

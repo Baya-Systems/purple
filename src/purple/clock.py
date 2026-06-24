@@ -48,6 +48,7 @@ class Clock:
         client-references may be one of
             purple-type-proxy with hierarchical name of function object
             purple-type-proxy with hierarchical name of clock object
+            forward-reference to something not yet declared in some base class
             function object
         '''
         rules = []

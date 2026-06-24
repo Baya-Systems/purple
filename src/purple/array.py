@@ -163,12 +163,14 @@ def Array(array_length, cls):
         _dp_array_slice_range = staticmethod(slice_range)
 
         for i in range(array_length):
-            metaclass.add_state(to_attrname(i), cls)
+            class Element(metaclass.AddToState(attrname = to_attrname(i), ArrayType = cls)):
+                @classmethod
+                def purple_statename_conversion(cls, _):
+                    return cls.attrname
+
+                element: ArrayType
 
     return TheArray
-
-# break circular import dependency
-metaclass.PurpleComponentMetaClass.generic_array = Array
 
 
 array_index_for_initial_value = []
