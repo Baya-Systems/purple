@@ -28,7 +28,7 @@ FIXME Future features (none tested, some may be implemented)
     Wrappers for FIFO, pull with state, push with state, etc
 '''
 
-from . import common, model, parameterise, state
+from . import common, model, parameterise, state, metaclass
 
 
 class PortBase(model.Model):
@@ -110,6 +110,9 @@ def make_port_class(payload_type, base_class):
                         target = target[int(n0)]
                     else:
                         target = target._dp_raw_getattr(n0)
+                        if isinstance(target, metaclass.PurpleTypeProxy):
+                            # occurs in py-3.14 where we leave the state as Proxy class variables
+                            return
                     target_name = target_name[1:]
                 except (AttributeError, IndexError):
                     return

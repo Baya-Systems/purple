@@ -22,6 +22,7 @@ FIXME
 
 import inspect
 import annotationlib
+import sys
 
 from . import common
 
@@ -141,18 +142,18 @@ class Binding:
             y >> other_handler_name
     '''
     def __init__(self, lhs, rhs, left2right):
+        print('BINDING INIT')
+        if not MetaClassState.peek().enable_binding_capture:
+            raise NameError('binding capture not enabled')
         self.lhs = lhs # always a proxy object
         self.rhs = rhs # may be a proxy object or a function object (local method)
         self.left2right = left2right
-        print('--add--binding', MetaClassState.raw_bindings, self.lhs, '<>', self.rhs)
+        print('--add--binding', MetaClassState.peek().raw_bindings, self.lhs, '<>', self.rhs)
         MetaClassState.add_binding(self)
-        print('   --add-binding-done')  ### NEVER GET HERE????
-        # FIXME bindings are being added too often!  maybe set evaluating to something temporary to prevent it
-        # because we evaluate multiple times
+        print('   --add-binding-done')
 
     def resolve(self, discovered_forename, purple_type):
-        # FIXME IS THIS NEEDED?
-        # YES.  need to convert to names for which we need to replace a type with a proxy
+        # need to convert to names for which we need to replace a type with a proxy
         if self.lhs is purple_type:
             self.lhs = PurpleTypeProxy(discovered_forename, purple_type, ())
 
@@ -204,7 +205,7 @@ def AddToState(**cls_variables):
             return f'{statename}_{clsv}'
 
     def init_subclass(cls, **kwargs):
-        current_dp_cls = MetaClassState.namespace_stack[-1]
+        current_dp_cls = MetaClassState.peek().namespace
         current_dp_cls['_dp_addtostate_classes'].append(cls)
 
     cls_variables['adapt_name'] = classmethod(default_nameconv)
@@ -212,38 +213,93 @@ def AddToState(**cls_variables):
     return ATSMetaClass('PurpleAddToState', tuple(), cls_variables)
 
 
-class MetaClassState:
-    ''' it seems that class variables get trashed by get_annotations()
-        so we will try to save and restore
+# cannot use class variable, because they can be trashed by get_annotations()
+MetaClassStateStack = []
 
+class MetaClassState:
+    '''
     namespace_stack is used by AddToState to record inner class declarations
     raw_bindings is used by Binding expressions to record themselves during __new__()
-        and is a new list because this actually happens between the save and restore
+    and new_bindings because we need to replace "_" with the actual annotation name
+
+    need a stack because of nested class declarations and also because of
+    generic class creation during annotation evaluation
     '''
-    namespace_stack = []
-    raw_bindings = None
-    new_bindings = None
+    # FIXME we may be adding the same binding multiple times as
+    # we re-evaluate annotations
+    @classmethod
+    def push(cls, namespace):
+        self = cls()
+        self.namespace = namespace
+        self.raw_bindings = []
+        self.new_bindings = []
+        self.enable_binding_capture = False
+        MetaClassStateStack.append(self)
+
+    @classmethod
+    def peek(cls):
+        return MetaClassStateStack[-1]
+
+    def pop(self):
+        assert MetaClassStateStack.pop(-1) is self
 
     @classmethod
     def get_annotations(cls, target, format):
-        ns = cls.namespace_stack
-        rb = cls.raw_bindings
-        annots = annotationlib.get_annotations(target, format = format)
-        cls.namespace_stack = ns
-        if rb is not None:
-            cls.raw_bindings = rb + (cls.new_bindings or [])
-        else:
-            cls.raw_bindings = None
-        cls.new_bindings = None
-        return annots
+        print('GetAnn', len(MetaClassStateStack))
+        rv = annotationlib.get_annotations(target, format = format)
+        print('   GetAnn', len(MetaClassStateStack))
+        return rv
+
+    # change any binding LHS which is a purple-class into a proxy with the annotation-name
+    @classmethod
+    def after_annotations(cls, element_name, element_type):
+        state = cls.peek()
+        if state.new_bindings:
+            for b in state.new_bindings:
+                b.resolve(element_name, element_type)
+            state.raw_bindings.extend(state.new_bindings)
+            state.new_bindings = []
 
     @classmethod
     def add_binding(cls, binding):
-        print('INADDBINGIN', cls.new_bindings)
-        if cls.new_bindings is None:
-            cls.new_bindings = []
-        cls.new_bindings.append(binding)
+        state = cls.peek()
+        print('INADDBINGIN', state.new_bindings, state.enable_binding_capture)
+        if state.enable_binding_capture:
+            MetaClassState.peek().new_bindings.append(binding)
+        else:
+            # force creation of a ForwardRef that we can re-evaluate with capture enabled
+            # thus allowing replacement of "_" and [Port] classes in after-annotations
+            raise NameError('binding capture not enabled')
         print('    INADDBINGIN')
+
+
+def eval_string_annotation(ann_str: str, owner):
+    ''' evaluate a STRING-format annotation with exactly the same context that FORWARDREF would use
+
+    (Claude generated, only works for classes)
+    needed because FORWARDREF ignores class-getitem or metaclass-getitem
+    '''
+    assert isinstance(owner, PurpleHierarchicalMetaClass)
+    globs = vars(sys.modules[owner.__module__])
+
+    # Recover enclosing-function locals captured as closure cells in __annotate__
+    locs = dict(vars(owner))
+    annotate = getattr(owner, '__annotate__', None)
+    if annotate is not None:
+        freevars = annotate.__code__.co_freevars
+        cells = annotate.__closure__ or ()
+        for name, cell in zip(freevars, cells):
+            try:
+                locs[name] = cell.cell_contents
+            except ValueError:
+                pass  # cell is empty (variable not yet assigned)
+
+    type_params = getattr(owner, '__type_params__', ())
+
+    ref = annotationlib.ForwardRef(ann_str, owner = owner)
+    return ref.evaluate(
+        format = annotationlib.Format.FORWARDREF, globals = globs, locals = locs, type_params = type_params
+    )
 
 
 class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
@@ -254,7 +310,7 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
     - rules for internal state modification
     - binding of ports and port-handlers
 
-    namespace-stack allows nested class declaration, provides a place for bindings and
+    metaclass-state-stack allows nested class declaration, provides a place for bindings and
         add-to-class declarations to store themselves
 
     metaclass supports deriving subclasses and overriding declarations from the base class(es)
@@ -264,29 +320,41 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
     def __prepare__(metacls, name, bases):
         ns = super().__prepare__(name, bases)
         ns['_dp_addtostate_classes'] = []
-        MetaClassState.namespace_stack.append(ns)
+        MetaClassState.push(ns)
+        print('---' * (1 + len(MetaClassStateStack)), 'PUSH', name, MetaClassStateStack)
         return ns
 
     def __new__(metacls, name, bases, classdict):
-        if name == 'Consumer': print('NEW')
-        assert MetaClassState.namespace_stack.pop() is classdict
+        print('NEW CLS', name)
+        dbgname = 'Fabric'
+        mc_state = MetaClassState.peek()
+        assert mc_state.namespace is classdict
         cls = type.__new__(metacls, name, bases, classdict)
-        if name == 'Consumer': print('NEWmade cls', metacls)
+        if name == dbgname: print('  ', name, 'NEWmade cls', metacls)
         unique_obj = common.UniqueObject
 
         # capture raw initial values, which are evaluated on the fly by python,
         # and replace with Proxy objects for binding evaluation
-        raw_initial_value = dict()
-        if name == 'Consumer': print('NEW A A', MetaClassState.raw_bindings)
+        if name == dbgname: print('  ', name, 'NEW A A', mc_state.raw_bindings, mc_state.enable_binding_capture)
+
+        # CPython bug: https://github.com/python/cpython/issues/138425
+        # if we use Format.VALUE or Format.FORWARDREF, it just assumes MyClass[a << b]
+        # returns MyClass; a<<b is not evaluated
+
+        if '_' in vars(cls):
+            delattr(cls, '_')
         cls_annotations = MetaClassState.get_annotations(cls, annotationlib.Format.STRING)
-        if name == 'Consumer': print('NEW A B', MetaClassState.raw_bindings)
+        if name == dbgname: print('  ', name, 'NEW A B', mc_state.raw_bindings)
+        raw_initial_value = dict()
         for n in cls_annotations:
             raw_initial_value[n] = getattr(cls, n, unique_obj)
             setattr(cls, n, PurpleTypeProxy(n, unique_obj, ()))
-        if name == 'Consumer': print('NEW B', MetaClassState.raw_bindings)
+        if name == dbgname: print('  ', name, 'NEW B', mc_state.raw_bindings)
 
         # and for addtostate nested classes
         for ats_class in cls._dp_addtostate_classes:
+            if hasattr(ats_class, '_'):
+                delattr(ats_class, '_')
             ats_annotations = MetaClassState.get_annotations(ats_class, annotationlib.Format.STRING)
 
             for n in ats_annotations:
@@ -308,8 +376,8 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
 
         # state elements in base classes already have proxies which are visible to lazy evaluation
         # but the new cls may override an initial value by just setting a class variable
-        # without a type annotation
-        if name == 'Consumer': print('NEW C', MetaClassState.raw_bindings)
+        # without a type annotation, so check for that
+        if name == dbgname: print('  ', name, 'NEW C', mc_state.raw_bindings)
         for base in bases:
             # order of bases does not matter; we just need all the hierarchical state names
             if isinstance(base, metacls):
@@ -320,55 +388,88 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
                             raw_initial_value[n] = iv
 
         # now evaluate the class annotations properly
-        if name == 'Consumer': print('NEW D', MetaClassState.raw_bindings)
-        def eval(annot_name, annot, annot_class):
-            # re-evaluation with underscore may be needed for bindings
+        if name == dbgname: print('  ', name, 'NEW D', mc_state.raw_bindings)
+        def re_eval(annot_name, annot_str, annot_class):
+            annot_class._ = PurpleTypeProxy(annot_name, unique_obj, ())
+            annot = eval_string_annotation(annot_str, annot_class)
+
+            if annot_name == 'c':
+                print('re-evaluating', annot_name, annot_str, annot)
+
             if isinstance(annot, annotationlib.ForwardRef):
-                annot_class._ = PurpleTypeProxy(annot_name, unique_obj, ())
-                rv = annot.evaluate()
-                if isinstance(rv, common.PurpleComponent):
-                    'need to call binding.resolve() to give it the annot_name'
-                    ### OK THIS IS WHAT resolve_bindings() is for.
-                    ### refactor here to always call resolve_bindins() which moves to MetaClassState
-                    ### and put at the end of this method
-                return rv
+                rv = annot.evaluate(format = annotationlib.Format.STRING)
+                assert '__annotationlib_name_' not in rv
             elif isinstance(annot, list):
                 # special case; forward-ref will return a list (eg for "rules") which can contain
                 #   - evaluated things like methods
                 #   - proxy objects eg names of methods in subcomponent
                 #   - forward-ref eg name of a method that will be declared in a subclass
-                x = []
-                for aa in annot:
-                    if isinstance(aa, annotationlib.ForwardRef):
-                        try:
-                            annot_class._ = PurpleTypeProxy(annot_name, unique_obj, ())
-                            x.append(aa.evaluate())
-                        except:
-                            x.append(aa.evaluate(format = annotationlib.Format.STRING))
+                rv = []
+                for a in annot:
+                    if isinstance(a, annotationlib.ForwardRef):
+                        rvs = a.evaluate(format = annotationlib.Format.STRING)
+                        rv.append(rvs)
+                        assert '__annotationlib_name_' not in rvs
                     else:
-                        x.append(aa)
-                return x
+                        rv.append(a)
             else:
                 # functions and other things that got evaluated first time
-                if isinstance(rv, common.PurpleComponent):
-                    'need to call binding.resolve() to give it the annot_name'
-                return annot
+                rv = annot
 
-        # enable capture of bindings
-        MetaClassState.raw_bindings = []
+            MetaClassState.after_annotations(annot_name, rv)
+            return rv
 
-        if name == 'Consumer': print('NEW evaluate', MetaClassState.raw_bindings)
-        cls_annotations = MetaClassState.get_annotations(cls, annotationlib.Format.FORWARDREF)
-        if name == 'Consumer': print('NEW re-evaluate', MetaClassState.raw_bindings)
-        raw_annotations = {n:eval(n, a, cls) for n,a in cls_annotations.items()}
-        if name == 'Consumer': print('NEW re-evaluation complete', MetaClassState.raw_bindings)
+        # enable capture of bindings, discarding any already captured
+        # FIXME this whole sequence does not work
+        #   we call get-annotations(fwd-ref) trying to evaluate everything
+        #   then we go back and evaluate any that are still fwd-ref, providing the "_"
+        #   some are evaluated OK first time so they don't return a fwd-ref
+        #   those might have produced bindings with a type instead of a proxy on LHS
+        #   I need to convert those types to proxies but can I re-evaluate one by one?
+        #   problem is not when "_" is used; those should be fwd-ref and re-evaluated
+        #   problem is when "_" is not used; Binding(Port[Integer], handler_function)
+        #       is added to new-bindings and we need to convert to Binding(Proxy(name), handler_function)
+        #       so we need the name
+        #       so we need to set "_" before evaluation
+        #       extreme case re-evaluate entire set of annotations for every annotation
+        #           and cherry-pick the binding you want each time
+        #       can we add a list of purple classes for which there are bindings, so not quite every one?
+        #   if I use STRING
+        #       do I get bindings (maybe do not care)? yes
+        #   in fact I may not get bindings for FORWADREF ???
+        #           sometimes do, sometimes do not
+        #           FORWARDEREF if it evaluates, seems to do so multiple times
+        #   can I force a FORWARDREF by raising attributeerror in add-binding?  yes this seems to work
+        #       but it may be a problem preventing the control variable from being trashed?
+        #       can cls._ = None work?
+
+        #   according to claude, a dict at module level may be safe from interference unlike class variables
+        #       at least for read-only access
+        #       and, evaluate() selectively by VALUE should give consistent side-effects
+
+        # evaluating annotations with generic classes can trigger nested calls to __new__
+        # so we need a stack for state
+        # taking a gamble; assuming a module-level dict will be safe
+
+#        if name == dbgname: print('  ', name, 'NEW evaluate', mc_state.raw_bindings)
+#        cls_annotations = MetaClassState.get_annotations(cls, annotationlib.Format.FORWARDREF)
+
+        if name == dbgname: print('  ', name, 'NEW re-evaluate', mc_state.raw_bindings)
+        mc_state.enable_binding_capture = True
+        raw_annotations = {n:re_eval(n, a, cls) for n,a in cls_annotations.items()}
+        if name == dbgname: print('  ', name, 'NEW re-evaluation complete', mc_state.raw_bindings)
 
         # and evaluate within addtostate nested classes
         for ats_class in cls._dp_addtostate_classes:
-            ats_annotations = MetaClassState.get_annotations(ats_class, annotationlib.Format.FORWARDREF)
+            mc_state.enable_binding_capture = False
+            if '_' in vars(ats_class):
+                delattr(ats_class, '_')
+            ats_annotations = MetaClassState.get_annotations(ats_class, annotationlib.Format.STRING)
+            mc_state.enable_binding_capture = True
             raw_annotations |= {
-                ats_class.adapt_name(n):eval(n, a, ats_class) for n,a in ats_annotations.items()
+                ats_class.adapt_name(n):re_eval(n, a, ats_class) for n,a in ats_annotations.items()
             }
+        if name == dbgname: print('  ', name, 'NEW added addtostate', mc_state.raw_bindings)
 
         cls._dp_initial_value = dict()
         cls._dp_state_types = dict()
@@ -384,14 +485,14 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
                 cls._dp_add_rules_from_base(base, PurpleTypeProxy)
                 cls._dp_add_bindings_from_base(base)
                 cls._dp_add_clocks_from_base(base)
-        if name == 'Consumer': print('NEW added from base', MetaClassState.raw_bindings)
+        if name == dbgname: print('  ', name, 'NEW added from base', mc_state.raw_bindings)
 
         # get new state from this class's annotation hints
         cls._dp_add_state_from_annotations(raw_annotations)
         cls._dp_add_rules_from_annotations(PurpleTypeProxy, raw_annotations)
-        cls._dp_add_bindings_from_annotations(MetaClassState.raw_bindings)
+        cls._dp_add_bindings_from_annotations(mc_state.raw_bindings)
         cls._dp_add_clocks_from_annotations(raw_annotations)
-        if name == 'Consumer': print('NEW added from annots')
+        if name == dbgname: print('  ', name, 'NEW added from annots')
 
         # now do the initial-values, later so that type changes are visible to bases
         for base in reversed(bases):
@@ -403,8 +504,11 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         for state_element_name,state_element_type in cls._dp_state_types.items():
             state_element_type._dp_on_instantiation(cls, state_element_name)
 
-        MetaClassState.raw_bindings = None
-        if name == 'Consumer': print('NEW done and returning')
+        print('---' * (1 + len(MetaClassStateStack)), 'POP', name, MetaClassStateStack)
+        for b in cls._dp_bindings:
+            print('              ', str(b))
+        mc_state.pop()
+        if name == dbgname: print('  ', name, 'NEW done and returning', mc_state.raw_bindings, cls._dp_bindings)
         return cls
 
     def __getitem__(cls, index):
@@ -419,11 +523,13 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         return cls
 
     def __rshift__(cls, handler_name):
+        print('RSHIFT')
         'used to bind a port to a local port-handler function'
         Binding(cls, handler_name, True)
         return cls
 
     def __lshift__(cls, handler_name):
+        print('LSHIFT')
         'used to bind a port to a local port-handler function'
         Binding(cls, handler_name, False)
         return cls
@@ -433,12 +539,12 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         '''called when an annotation is added and its name becomes known
         '''
         # fix any direct-to-port bindings
-        for b in MetaClassState.raw_bindings:
+        for b in mc_state.raw_bindings:
             b.resolve(forename, purple_type)
 
         # explode all binding-generators
         # FIXME NOT SURE WHAT TO DO HERE
-        last_getitem_index = MetaClassState.namespace_stack[-1].last_getitem_index
+        last_getitem_index = MetaClassState.peek().namespace.last_getitem_index
         for expr in last_getitem_index:
             if inspect.isgenerator(expr):
                 for x in expr:
