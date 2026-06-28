@@ -58,13 +58,13 @@ def make_port_class(payload_type, base_class):
         def _dp_port_get_current(self):
             bound_method = getattr(self, '_dp_port_in_method', None)
             if bound_method is None:
-                raise common.UnBoundPort(f'Missing binding for input to {".".join(self.name)}')
+                raise common.UnBoundPort(f'FOUND  Missing binding for input to {".".join(self.name)}')
             return bound_method()
 
         def _dp_port_set_current(self, value):
             bound_method = getattr(self, '_dp_port_out_method', None)
             if bound_method is None:
-                raise common.UnBoundPort(f'Missing binding for output of {".".join(self.name)}')
+                raise common.UnBoundPort(f'FOUND  Missing binding for output of {".".join(self.name)} {id(self)}')
             return bound_method(value)
 
         @classmethod
@@ -102,20 +102,17 @@ def make_port_class(payload_type, base_class):
                 remote port may not have been elaborated before this port: the later-instantiated one will succeed
                 requires same BasicPort type, which implictly tests for matching payload types
             '''
+            print('XXXXX', owner.name, target_name)
             target = owner
-            while target_name:
-                try:
-                    n0 = target_name[0]
-                    if n0.isdigit():
-                        target = target[int(n0)]
-                    else:
-                        target = target._dp_raw_getattr(n0)
-                        if isinstance(target, metaclass.PurpleTypeProxy):
-                            # occurs in py-3.14 where we leave the state as Proxy class variables
-                            return
-                    target_name = target_name[1:]
-                except (AttributeError, IndexError):
+            local_tname = list(target_name)
+            while local_tname:
+                print('XXXXXXXXXXXXXXXXXXXX', type(target), local_tname, target._dp_state_types.get(local_tname[0], 'eh?'))
+                target = target._dp_raw_getattr(local_tname.pop(0))
+                if isinstance(target, metaclass.PurpleTypeProxy):
+                    # class variable was found, target not yet elaborated
                     return
+
+            print('   XXXXX FOUND', self.name, owner.name, target_name, isinstance(target, BasicPort), id(self), id(target), out_not_in)
 
             if out_not_in:
                 if isinstance(target, BasicPort):

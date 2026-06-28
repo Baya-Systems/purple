@@ -241,6 +241,9 @@ class HandlerArray:
     def __class_getitem__(cls, array_length):
         return type(cls)(f'HandlerArray_{array_length}', (cls,), dict(length = array_length))
 
+    def __getitem__(self, index):
+        print('AAAAAAAAAAAAAAAAAAAA EVAL OBJ', index)
+
     def __init__(self, the_method):
         self.the_method = the_method
         self.name = (the_method.__name__,)
@@ -255,6 +258,7 @@ class HandlerArray:
             self.length = array.length
 
         def __getitem__(self, index):
+            print('AAAAAAAAAAAAAAAAAAAA EVAL GOT', index)
             if self.length is None or 0 <= index < self.length:
                 return self.CallMe(self.owner, self.array, index)
             else:

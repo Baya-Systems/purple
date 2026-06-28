@@ -93,7 +93,7 @@ class Lambda:
         blah
 '''
 
-from purple import Model, Record, Integer, Port, FIFO_Input_Port, ArrayIndex, HandlerArray
+from purple import Model, Record, Integer, Port, FIFO_Input_Port, ArrayIndex, HandlerArray, AddToState
 import cli
 import random
 
@@ -230,6 +230,7 @@ class Target(Model):
     resp_port: Port[Response]
 
     def req_handler(self, req):
+        print('FOUND REQ TAR', req.address, self.node_id)
         self.print(f'TGT_{self.node_id}: req({req.address})')
         assert req.address % num_targets == self.node_id
         self.resp_port = Response(data = req.address + self.node_id, source = self.node_id)
@@ -243,6 +244,7 @@ class IBridge(Model):
     resp_transport: Port[Response] >> resp_handler
 
     def req_handler(self, req):
+        print('FOUND REQ IB', req.address)
         self.req_transport = req
 
     def resp_handler(self, resp):
@@ -266,11 +268,15 @@ class Fabric(Model):
     # target interface
     targets_from_bridge: num_targets * Port[Request]
 #    targets_to_bridge: (num_targets * Port[Response])[(p >> h for p,h in zip(_, resp_to_bridge))]
-    targets_to_bridge: (num_targets * Port[Response])[
-        [p >> h for p,h in zip(_, resp_to_bridge)]
-    ]
+    def tb_binder(_, resp_to_bridge, num_targets = num_targets):
+        print('AAAAA TB BIND EVAL', resp_to_bridge)
+        return [_[i] >> resp_to_bridge[i] for i in range(num_targets)]
+    RespPortArray = num_targets * Port[Response]
+#    targets_to_bridge: (num_targets * Port[Response])[tb_binder(_, resp_to_bridge)]
+    targets_to_bridge: RespPortArray[tb_binder(_, resp_to_bridge)]
 
     def req_from_initiator(self, req):
+        print('FOUND REQ FAB', req.address)
         self.bridge_from_initiator = req
 
     def resp_to_initiator(self, resp):
@@ -281,6 +287,7 @@ class Fabric(Model):
 
     @HandlerArray
     def resp_to_bridge(self, index, resp):
+        print('FOUND RESP FAB', index)
         assert index == resp.source
         self.bridge_from_targets = resp
 
@@ -291,6 +298,8 @@ class MuchBinding(cli.Test.Top):
     ibridge: IBridge
     targets: num_targets * Target
 
+    def st_binder(targets, _, num_targets = num_targets):
+        return [_.targets_from_bridge[i] >> targets[i].req_port for i in range(num_targets)]
     fabric: Fabric[
         _.initiator_to_bridge << initiator.req_port,
         _.bridge_from_initiator >> ibridge.req_port,
@@ -298,14 +307,20 @@ class MuchBinding(cli.Test.Top):
         _.bridge_from_targets >> ibridge.resp_transport,
         _.bridge_to_initiator << ibridge.resp_port,
         _.initiator_from_bridge >> initiator.resp_port,
-        (src_in_fabric >> target.req_port for target,src_in_fabric in zip(targets, _.targets_from_bridge)),
+        st_binder(targets, _),
+#        (src_in_fabric >> target.req_port for target,src_in_fabric in zip(targets, _.targets_from_bridge)),
     ]
 
-    for dst_in_fabric,target in zip(fabric.targets_to_bridge, targets):
-        dst_in_fabric << target.resp_port
+#    for dst_in_fabric,target in zip(fabric.targets_to_bridge, targets):
+#        dst_in_fabric << target.resp_port
+
+    for i in range(num_targets):
+        class Dst_to_Target(AddToState(i = i)):
+            rsp: fabric.targets_to_bridge[i] << targets[i].resp_port
+#            req: fabric.targets_from_bridge[i] >> targets[i].req_port
 
 
-print('elaboration')
+print('XXXXXX elaboration')
 @cli.Test(MuchBinding())
 def the_test(top):
     print('testing to see if all the bindings worked')

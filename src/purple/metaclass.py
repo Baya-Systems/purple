@@ -79,11 +79,14 @@ class PurpleTypeProxy:
     if we refer to a previously-declared sub-component, we need to be able to get a
     similar reference for its internal sub-state
     '''
+    # FIXME unclear if this class is even needed any more as Binding is absorbing everything
+    # possibly forward-refs to rules/clocks in abstract base classes?
+    # OK obviously needed for port-to-port binding eval but most of the methods seem redundant?
     def __init__(self, name, purple_type, hierarchical_name):
         self.name = (*hierarchical_name, name)
         self.purple_type = purple_type
 
-    def resolve(self, discovered_forename, top_purple_type):
+    def LEGACYresolve(self, discovered_forename, top_purple_type):
         # FIXME IS THIS CALLED ANY MORE?
         if self.name[0] == '_':
             self.name = discovered_forename, *self.name[1:]
@@ -101,6 +104,9 @@ class PurpleTypeProxy:
 
     def __getitem__(self, index):
         'for binding eg ports within arrays'
+        # FIXME DOES THIS EVER GET CALLED NOW WHEN THERE IS A PURPLE TYPE
+        # OR ONLY FOR RAW NAMES?
+        # FIXME IF WE CAN FIND THE TYPE FROM raw-annotations WE CAN DO BETTER
         if isinstance(index, slice):
             return [self[i] for i in self.purple_type._dp_array_slice_range(index)]
         elif self.purple_type is common.UniqueObject:
@@ -153,14 +159,16 @@ class Binding:
         print('   --add-binding-done')
 
     def resolve(self, discovered_forename, purple_type):
-        # need to convert to names for which we need to replace a type with a proxy
+        # need to convert to names for which we need to replace a type/function with a proxy
         if self.lhs is purple_type:
             self.lhs = PurpleTypeProxy(discovered_forename, purple_type, ())
-
-    def convert_to_names(self):
         if inspect.isfunction(self.rhs):
             self.rhs = PurpleTypeProxy(self.rhs.__name__, None, ())
-        print('CONV', self.lhs, self.rhs, self.left2right)
+        print('RESOLVE', self.lhs.name, self.rhs.name, self.left2right)
+
+    def LEGACYconvert_to_names(self):
+        if inspect.isfunction(self.rhs):
+            self.rhs = PurpleTypeProxy(self.rhs.__name__, None, ())
         assert hasattr(self.lhs, 'name'), self.lhs
         assert self.lhs.name[0] != '_' and self.rhs.name[0] != '_'
         return self
@@ -348,6 +356,7 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
             delattr(cls, '_')
         cls_annotations = MetaClassState.get_annotations(cls, annotationlib.Format.STRING)
         if name == dbgname: print('  ', name, 'NEW A B', mc_state.raw_bindings)
+        if name == dbgname: print('  ', name, 'NEW A B', cls_annotations)
         raw_initial_value = dict()
         for n in cls_annotations:
             raw_initial_value[n] = getattr(cls, n, unique_obj)
@@ -395,8 +404,8 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         def re_eval(annot_name, annot_str, annot_class):
             annot_class._ = PurpleTypeProxy(annot_name, unique_obj, ())
             if annot_name == 'targets_to_bridge':
-                print('re-evaluating', annot_name, annot_str)
-
+                print('AAAAAAA  EVAL', annot_str)
+                print('AAAAAAA  EVAL', cls.RespPortArray, cls._, cls.tb_binder, cls.resp_to_bridge)
             annot = eval_string_annotation(annot_str, annot_class)
 
             if isinstance(annot, annotationlib.ForwardRef):
@@ -421,41 +430,6 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
 
             MetaClassState.after_annotations(annot_name, rv)
             return rv
-
-        # enable capture of bindings, discarding any already captured
-        # FIXME this whole sequence does not work
-        #   we call get-annotations(fwd-ref) trying to evaluate everything
-        #   then we go back and evaluate any that are still fwd-ref, providing the "_"
-        #   some are evaluated OK first time so they don't return a fwd-ref
-        #   those might have produced bindings with a type instead of a proxy on LHS
-        #   I need to convert those types to proxies but can I re-evaluate one by one?
-        #   problem is not when "_" is used; those should be fwd-ref and re-evaluated
-        #   problem is when "_" is not used; Binding(Port[Integer], handler_function)
-        #       is added to new-bindings and we need to convert to Binding(Proxy(name), handler_function)
-        #       so we need the name
-        #       so we need to set "_" before evaluation
-        #       extreme case re-evaluate entire set of annotations for every annotation
-        #           and cherry-pick the binding you want each time
-        #       can we add a list of purple classes for which there are bindings, so not quite every one?
-        #   if I use STRING
-        #       do I get bindings (maybe do not care)? yes
-        #   in fact I may not get bindings for FORWADREF ???
-        #           sometimes do, sometimes do not
-        #           FORWARDEREF if it evaluates, seems to do so multiple times
-        #   can I force a FORWARDREF by raising attributeerror in add-binding?  yes this seems to work
-        #       but it may be a problem preventing the control variable from being trashed?
-        #       can cls._ = None work?
-
-        #   according to claude, a dict at module level may be safe from interference unlike class variables
-        #       at least for read-only access
-        #       and, evaluate() selectively by VALUE should give consistent side-effects
-
-        # evaluating annotations with generic classes can trigger nested calls to __new__
-        # so we need a stack for state
-        # taking a gamble; assuming a module-level dict will be safe
-
-#        if name == dbgname: print('  ', name, 'NEW evaluate', mc_state.raw_bindings)
-#        cls_annotations = MetaClassState.get_annotations(cls, annotationlib.Format.FORWARDREF)
 
         if name == dbgname: print('  ', name, 'NEW re-evaluate', mc_state.raw_bindings)
         mc_state.enable_binding_capture = True

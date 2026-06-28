@@ -173,7 +173,20 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
             use +>> and +<< operators for fans?
         '''
         for b in raw_cls_bindings:
-            cls._dp_bindings.append(b.convert_to_names())
+            # search for array indices and convert to strings according to the class definition
+            for hs in b.lhs, b.rhs:
+                assert isinstance(hs, metaclass.PurpleTypeProxy)
+                if any(n[0].isdigit() for n in hs.name):
+                    purple_cls = cls
+                    new_name = []
+                    for n in hs.name:
+                        fixed_name = purple_cls._dp_array_2attrname(int(n)) if n[0].isdigit() else n
+                        new_name.append(fixed_name)
+                        print('AAAAAA', cls, hs.name, purple_cls, list(purple_cls._dp_state_types))
+                        purple_cls = purple_cls._dp_state_types[fixed_name]
+                    hs.name = tuple(new_name)
+
+            cls._dp_bindings.append(b)
 
     @classmethod
     def _dp_add_clocks_from_base(cls, base):

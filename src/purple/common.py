@@ -243,7 +243,10 @@ class PurpleComponent:
         ''' called on declaration of a Model or Record subclass, after bases are incorporated
         '''
         for state_element_name,state_element_type in raw_annotations.items():
+            print('AAAAAAAAA', cls, state_element_name,type(state_element_type))
             if inspect.isclass(state_element_type) and issubclass(state_element_type, PurpleComponent):
+                if state_element_name.isdigit():
+                    state_element_name = state_element_type._dp_array_2attrname(int(state_element_name))
                 cls._dp_state_types[state_element_name] = state_element_type
 
 

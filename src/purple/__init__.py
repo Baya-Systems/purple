@@ -12,6 +12,12 @@ FIXME
     py3.14 breaks everything
         with 3.13 elaboration is not deterministic; fix this in 3.14
         problem seems to be the order of rules, which can affect randomised simulators
+        issues I would like to improve
+            loops binding, would be nice to loop over an array not range(array_size)
+                better: allow port_array << other_port_array / port_array >> handler_array
+                but must support slices so subsets/offsets-for-pipelines
+            need to test conditional parts of class, ternary ops in annotations, etc
+            was it a good idea to keep the proxy objects (broke Enumeration but simplifies inheritance)?
     state variable type for clocked sim integer where two processes change the value
         eg num_outstanding: DualProcessCounter[limit]
         def clocked(self):
@@ -201,3 +207,4 @@ from .parameterise import *
 from .interface import *
 from .simulator import *
 from .verif import *
+from .metaclass import AddToState
