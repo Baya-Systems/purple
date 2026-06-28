@@ -171,6 +171,10 @@ class Binding:
         return f'{lhs.rjust(30)} {">>" if self.left2right else "<<"} {rhs}'
 
 
+class ATSMetaClassBase(type):
+    pass
+
+
 def AddToState(**cls_variables):
     ''' method returning a base class for adding state elements programmatically,
 
@@ -183,8 +187,7 @@ def AddToState(**cls_variables):
     in the inner class, declare state elements and bindings, etc as normal and
     they will be added to the outer class with adapted names
     '''
-
-    class ATSMetaClass(type):
+    class ATSMetaClass(ATSMetaClassBase):
         @classmethod
         def __prepare__(metacls, name, bases, cls_namespace = cls_variables.copy()):
             return cls_namespace
@@ -279,7 +282,7 @@ def eval_string_annotation(ann_str: str, owner):
     (Claude generated, only works for classes)
     needed because FORWARDREF ignores class-getitem or metaclass-getitem
     '''
-    assert isinstance(owner, PurpleHierarchicalMetaClass)
+    assert isinstance(owner, (PurpleHierarchicalMetaClass, ATSMetaClassBase))
     globs = vars(sys.modules[owner.__module__])
 
     # Recover enclosing-function locals captured as closure cells in __annotate__
@@ -391,10 +394,10 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         if name == dbgname: print('  ', name, 'NEW D', mc_state.raw_bindings)
         def re_eval(annot_name, annot_str, annot_class):
             annot_class._ = PurpleTypeProxy(annot_name, unique_obj, ())
-            annot = eval_string_annotation(annot_str, annot_class)
+            if annot_name == 'targets_to_bridge':
+                print('re-evaluating', annot_name, annot_str)
 
-            if annot_name == 'c':
-                print('re-evaluating', annot_name, annot_str, annot)
+            annot = eval_string_annotation(annot_str, annot_class)
 
             if isinstance(annot, annotationlib.ForwardRef):
                 rv = annot.evaluate(format = annotationlib.Format.STRING)

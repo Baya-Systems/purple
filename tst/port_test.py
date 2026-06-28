@@ -265,7 +265,10 @@ class Fabric(Model):
 
     # target interface
     targets_from_bridge: num_targets * Port[Request]
-    targets_to_bridge: (num_targets * Port[Response])[(p >> h for p,h in zip(_, resp_to_bridge))]
+#    targets_to_bridge: (num_targets * Port[Response])[(p >> h for p,h in zip(_, resp_to_bridge))]
+    targets_to_bridge: (num_targets * Port[Response])[
+        [p >> h for p,h in zip(_, resp_to_bridge)]
+    ]
 
     def req_from_initiator(self, req):
         self.bridge_from_initiator = req

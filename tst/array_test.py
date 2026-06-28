@@ -337,10 +337,11 @@ for i in range(5):
     assert rc.a[i].b == i
 assert rc.a[2].a == 7
 
-
 class WithIndex2(Record):
     a: Integer[10]
-    b: FromArrayIndex[lambda x, y: y + x * 100]
+    # annotationlib cannot deal with lambdas
+    cv = lambda x, y: y + x * 100
+    b: FromArrayIndex[cv]
 
 class RecordWithIndex2(Record):
     a: 5 * WithIndex2
