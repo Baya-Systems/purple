@@ -229,46 +229,47 @@ class HandlerArray:
     '''decorator for converting a method into a array type
 
     decorates a method of the form:  def a_method(self, index, etc):
-    calling is done thus: self.a_method[i](etc)
 
-    can take a depth parameter, or not
+    getitem has the effect of inserting a new method into the class being
+        parsed, which method is bound to the index
+    this means that port binding can look for "function" and does not need to
+        know about HandlerArray
 
-    can be iterated over, for binding eg to an array of Port,
-        but only within a zip() if there's no finite depth
+    can be called
+        through a bound port
+        as declared self.a_method(index, etc)
+        as an array of methods self.a_method[i](etc)
     '''
-    length = None
-
-    def __class_getitem__(cls, array_length):
-        return type(cls)(f'HandlerArray_{array_length}', (cls,), dict(length = array_length))
-
-    def __getitem__(self, index):
-        print('AAAAAAAAAAAAAAAAAAAA EVAL OBJ', index)
-
     def __init__(self, the_method):
         self.the_method = the_method
-        self.name = (the_method.__name__,)
+        self.method_name = the_method.__name__
 
-    def __get__(self, owner, owner_cls):
-        return self.Got(self, owner)
-
-    class Got:
-        def __init__(self, array, owner):
-            self.array = array
+    class BoundToOwner:
+        def __init__(self, hdlr_array, owner, index):
+            self.hdlr_array = hdlr_array
             self.owner = owner
-            self.length = array.length
+            self.index = index
 
         def __getitem__(self, index):
-            print('AAAAAAAAAAAAAAAAAAAA EVAL GOT', index)
-            if self.length is None or 0 <= index < self.length:
-                return self.CallMe(self.owner, self.array, index)
+            return type(self)(self.hdlr_array, self.owner, index)
+
+        def __call__(self, *a, **ka):
+            if self.index is common.UniqueObject:
+                return self.hdlr_array.the_method(self.owner, *a, **ka)
             else:
-                raise IndexError
+                return self.hdlr_array.the_method(self.owner, self.index, *a, **ka)
 
-        class CallMe:
-            def __init__(self, owner, array, index):
-                self.owner = owner
-                self.index = index
-                self.the_method = array.the_method
+    def __get__(self, owner, owner_cls):
+        if owner is None:
+            self.owner_cls = owner_cls
+            return self
+        else:
+            return self.BoundToOwner(self, owner, common.UniqueObject)
 
-            def __call__(self, *a, **ka):
-                return self.the_method(self.owner, self.index, *a, **ka)
+    def __getitem__(self, index):
+        def handler(owner, *a, index = index, hdlr_array = self, **ka):
+            bound_handler = getattr(owner, hdlr_array.method_name)
+            return bound_handler(index, *a, **ka)
+        handler.__name__ = f'{self.method_name}_dp_arrayhandler_{index}'
+        setattr(self.owner_cls, handler.__name__, handler)
+        return handler

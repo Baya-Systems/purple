@@ -18,6 +18,12 @@ FIXME
                 but must support slices so subsets/offsets-for-pipelines
             need to test conditional parts of class, ternary ops in annotations, etc
             was it a good idea to keep the proxy objects (broke Enumeration but simplifies inheritance)?
+    ability to bind arrays to arrays
+        v important for py-3.14
+        class X(Model):
+            a: (10 * Port[Y]) << HandlerArray(10, my_method)
+            b: (10 * Port[Y)) << a
+            c: (7 * Port[Y]) << b[1:8]
     state variable type for clocked sim integer where two processes change the value
         eg num_outstanding: DualProcessCounter[limit]
         def clocked(self):
@@ -100,6 +106,8 @@ FIXME
             a: Integer[0,100] = ArrayIndexInitialiser
             b: ArrayIndex
             c: MutableArrayIndex[Integer[0,100]]
+            d0: Integer[0, 100] = ArrayIndex
+            d1: Const[ArrayIndex]
     for Python without GIL, simulators should be able to explore rules in parallel from the same system state
         this implies having multiple testbenches within a simulator, with synchronised state
         allocate a decent number of rules to each testbench, because we will synchronise after one step

@@ -148,15 +148,12 @@ class Binding:
             y >> other_handler_name
     '''
     def __init__(self, lhs, rhs, left2right):
-        print('BINDING INIT')
         if not MetaClassState.peek().enable_binding_capture:
             raise NameError('binding capture not enabled')
         self.lhs = lhs # always a proxy object
         self.rhs = rhs # may be a proxy object or a function object (local method)
         self.left2right = left2right
-        print('--add--binding', MetaClassState.peek().raw_bindings, self.lhs, '<>', self.rhs)
         MetaClassState.add_binding(self)
-        print('   --add-binding-done')
 
     def resolve(self, discovered_forename, purple_type):
         # need to convert to names for which we need to replace a type/function with a proxy
@@ -164,7 +161,6 @@ class Binding:
             self.lhs = PurpleTypeProxy(discovered_forename, purple_type, ())
         if inspect.isfunction(self.rhs):
             self.rhs = PurpleTypeProxy(self.rhs.__name__, None, ())
-        print('RESOLVE', self.lhs.name, self.rhs.name, self.left2right)
 
     def LEGACYconvert_to_names(self):
         if inspect.isfunction(self.rhs):
@@ -256,10 +252,7 @@ class MetaClassState:
 
     @classmethod
     def get_annotations(cls, target, format):
-        print('GetAnn', len(MetaClassStateStack))
-        rv = annotationlib.get_annotations(target, format = format)
-        print('   GetAnn', len(MetaClassStateStack))
-        return rv
+        return annotationlib.get_annotations(target, format = format)
 
     # change any binding LHS which is a purple-class into a proxy with the annotation-name
     @classmethod
@@ -274,14 +267,12 @@ class MetaClassState:
     @classmethod
     def add_binding(cls, binding):
         state = cls.peek()
-        print('INADDBINGIN', state.new_bindings, state.enable_binding_capture)
         if state.enable_binding_capture:
             MetaClassState.peek().new_bindings.append(binding)
         else:
             # force creation of a ForwardRef that we can re-evaluate with capture enabled
             # thus allowing replacement of "_" and [Port] classes in after-annotations
             raise NameError('binding capture not enabled')
-        print('    INADDBINGIN')
 
 
 def eval_string_annotation(ann_str: str, owner):
@@ -332,21 +323,17 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         ns = super().__prepare__(name, bases)
         ns['_dp_addtostate_classes'] = []
         MetaClassState.push(ns)
-        print('---' * (1 + len(MetaClassStateStack)), 'PUSH', name, MetaClassStateStack)
         return ns
 
     def __new__(metacls, name, bases, classdict):
-        print('NEW CLS', name)
-        dbgname = 'Fabric'
         mc_state = MetaClassState.peek()
         assert mc_state.namespace is classdict
         cls = type.__new__(metacls, name, bases, classdict)
-        if name == dbgname: print('  ', name, 'NEWmade cls', metacls)
+
         unique_obj = common.UniqueObject
 
         # capture raw initial values, which are evaluated on the fly by python,
         # and replace with Proxy objects for binding evaluation
-        if name == dbgname: print('  ', name, 'NEW A A', mc_state.raw_bindings, mc_state.enable_binding_capture)
 
         # CPython bug: https://github.com/python/cpython/issues/138425
         # if we use Format.VALUE or Format.FORWARDREF, it just assumes MyClass[a << b]
@@ -355,13 +342,10 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         if '_' in vars(cls):
             delattr(cls, '_')
         cls_annotations = MetaClassState.get_annotations(cls, annotationlib.Format.STRING)
-        if name == dbgname: print('  ', name, 'NEW A B', mc_state.raw_bindings)
-        if name == dbgname: print('  ', name, 'NEW A B', cls_annotations)
         raw_initial_value = dict()
         for n in cls_annotations:
             raw_initial_value[n] = getattr(cls, n, unique_obj)
             setattr(cls, n, PurpleTypeProxy(n, unique_obj, ()))
-        if name == dbgname: print('  ', name, 'NEW B', mc_state.raw_bindings)
 
         # and for addtostate nested classes
         for ats_class in cls._dp_addtostate_classes:
@@ -373,9 +357,10 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
                 name_in_cls = ats_class.adapt_name(n)
                 raw_initial_value[name_in_cls] = getattr(ats_class, n, unique_obj)
 
-            for n in cls_annotations:
-                setattr(ats_class, n, PurpleTypeProxy(n, unique_obj, ()))
+            # everything from the class being declared is available in the ATS class
+            setattr(ats_class, name, cls)
 
+            # but local things override them
             for n in ats_annotations:
                 cls_proxy = PurpleTypeProxy(name_in_cls, unique_obj, ())
                 setattr(cls, name_in_cls, cls_proxy)
@@ -389,7 +374,6 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         # state elements in base classes already have proxies which are visible to lazy evaluation
         # but the new cls may override an initial value by just setting a class variable
         # without a type annotation, so check for that
-        if name == dbgname: print('  ', name, 'NEW C', mc_state.raw_bindings)
         for base in bases:
             # order of bases does not matter; we just need all the hierarchical state names
             if isinstance(base, metacls):
@@ -400,12 +384,8 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
                             raw_initial_value[n] = iv
 
         # now evaluate the class annotations properly
-        if name == dbgname: print('  ', name, 'NEW D', mc_state.raw_bindings)
         def re_eval(annot_name, annot_str, annot_class):
             annot_class._ = PurpleTypeProxy(annot_name, unique_obj, ())
-            if annot_name == 'targets_to_bridge':
-                print('AAAAAAA  EVAL', annot_str)
-                print('AAAAAAA  EVAL', cls.RespPortArray, cls._, cls.tb_binder, cls.resp_to_bridge)
             annot = eval_string_annotation(annot_str, annot_class)
 
             if isinstance(annot, annotationlib.ForwardRef):
@@ -431,10 +411,8 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
             MetaClassState.after_annotations(annot_name, rv)
             return rv
 
-        if name == dbgname: print('  ', name, 'NEW re-evaluate', mc_state.raw_bindings)
         mc_state.enable_binding_capture = True
         raw_annotations = {n:re_eval(n, a, cls) for n,a in cls_annotations.items()}
-        if name == dbgname: print('  ', name, 'NEW re-evaluation complete', mc_state.raw_bindings)
 
         # and evaluate within addtostate nested classes
         for ats_class in cls._dp_addtostate_classes:
@@ -446,7 +424,6 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
             raw_annotations |= {
                 ats_class.adapt_name(n):re_eval(n, a, ats_class) for n,a in ats_annotations.items()
             }
-        if name == dbgname: print('  ', name, 'NEW added addtostate', mc_state.raw_bindings)
 
         cls._dp_initial_value = dict()
         cls._dp_state_types = dict()
@@ -462,14 +439,12 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
                 cls._dp_add_rules_from_base(base, PurpleTypeProxy)
                 cls._dp_add_bindings_from_base(base)
                 cls._dp_add_clocks_from_base(base)
-        if name == dbgname: print('  ', name, 'NEW added from base', mc_state.raw_bindings)
 
         # get new state from this class's annotation hints
         cls._dp_add_state_from_annotations(raw_annotations)
         cls._dp_add_rules_from_annotations(PurpleTypeProxy, raw_annotations)
         cls._dp_add_bindings_from_annotations(mc_state.raw_bindings)
         cls._dp_add_clocks_from_annotations(raw_annotations)
-        if name == dbgname: print('  ', name, 'NEW added from annots')
 
         # now do the initial-values, later so that type changes are visible to bases
         for base in reversed(bases):
@@ -481,11 +456,7 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         for state_element_name,state_element_type in cls._dp_state_types.items():
             state_element_type._dp_on_instantiation(cls, state_element_name)
 
-        print('---' * (1 + len(MetaClassStateStack)), 'POP', name, MetaClassStateStack)
-        for b in cls._dp_bindings:
-            print('              ', str(b))
         mc_state.pop()
-        if name == dbgname: print('  ', name, 'NEW done and returning', mc_state.raw_bindings, cls._dp_bindings)
         return cls
 
     def __getitem__(cls, index):
@@ -500,30 +471,11 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         return cls
 
     def __rshift__(cls, handler_name):
-        print('RSHIFT')
         'used to bind a port to a local port-handler function'
         Binding(cls, handler_name, True)
         return cls
 
     def __lshift__(cls, handler_name):
-        print('LSHIFT')
         'used to bind a port to a local port-handler function'
         Binding(cls, handler_name, False)
         return cls
-
-    @classmethod
-    def REDUNDANTresolve_bindings(metacls, forename, purple_type):
-        '''called when an annotation is added and its name becomes known
-        '''
-        # fix any direct-to-port bindings
-        for b in mc_state.raw_bindings:
-            b.resolve(forename, purple_type)
-
-        # explode all binding-generators
-        # FIXME NOT SURE WHAT TO DO HERE
-        last_getitem_index = MetaClassState.peek().namespace.last_getitem_index
-        for expr in last_getitem_index:
-            if inspect.isgenerator(expr):
-                for x in expr:
-                    pass
-        PurpleHierarchicalMetaClass.last_getitem_index = ()

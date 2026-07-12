@@ -182,7 +182,6 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
                     for n in hs.name:
                         fixed_name = purple_cls._dp_array_2attrname(int(n)) if n[0].isdigit() else n
                         new_name.append(fixed_name)
-                        print('AAAAAA', cls, hs.name, purple_cls, list(purple_cls._dp_state_types))
                         purple_cls = purple_cls._dp_state_types[fixed_name]
                     hs.name = tuple(new_name)
 

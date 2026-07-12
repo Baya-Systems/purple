@@ -102,17 +102,13 @@ def make_port_class(payload_type, base_class):
                 remote port may not have been elaborated before this port: the later-instantiated one will succeed
                 requires same BasicPort type, which implictly tests for matching payload types
             '''
-            print('XXXXX', owner.name, target_name)
             target = owner
             local_tname = list(target_name)
             while local_tname:
-                print('XXXXXXXXXXXXXXXXXXXX', type(target), local_tname, target._dp_state_types.get(local_tname[0], 'eh?'))
                 target = target._dp_raw_getattr(local_tname.pop(0))
                 if isinstance(target, metaclass.PurpleTypeProxy):
                     # class variable was found, target not yet elaborated
                     return
-
-            print('   XXXXX FOUND', self.name, owner.name, target_name, isinstance(target, BasicPort), id(self), id(target), out_not_in)
 
             if out_not_in:
                 if isinstance(target, BasicPort):

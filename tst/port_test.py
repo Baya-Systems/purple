@@ -97,6 +97,8 @@ from purple import Model, Record, Integer, Port, FIFO_Input_Port, ArrayIndex, Ha
 import cli
 import random
 
+from purple.metaclass import MetaClassState
+
 
 print('Basic push port')
 
@@ -267,13 +269,11 @@ class Fabric(Model):
 
     # target interface
     targets_from_bridge: num_targets * Port[Request]
-#    targets_to_bridge: (num_targets * Port[Response])[(p >> h for p,h in zip(_, resp_to_bridge))]
-    def tb_binder(_, resp_to_bridge, num_targets = num_targets):
-        print('AAAAA TB BIND EVAL', resp_to_bridge)
-        return [_[i] >> resp_to_bridge[i] for i in range(num_targets)]
-    RespPortArray = num_targets * Port[Response]
-#    targets_to_bridge: (num_targets * Port[Response])[tb_binder(_, resp_to_bridge)]
-    targets_to_bridge: RespPortArray[tb_binder(_, resp_to_bridge)]
+
+    targets_to_bridge: num_targets * Port[Response]
+    for i in range(num_targets):
+        class BindHandlers(AddToState(i = i)):
+            handle_rsp: Fabric.targets_to_bridge[i] >> Fabric.resp_to_bridge[i]
 
     def req_from_initiator(self, req):
         print('FOUND REQ FAB', req.address)
@@ -308,19 +308,13 @@ class MuchBinding(cli.Test.Top):
         _.bridge_to_initiator << ibridge.resp_port,
         _.initiator_from_bridge >> initiator.resp_port,
         st_binder(targets, _),
-#        (src_in_fabric >> target.req_port for target,src_in_fabric in zip(targets, _.targets_from_bridge)),
     ]
-
-#    for dst_in_fabric,target in zip(fabric.targets_to_bridge, targets):
-#        dst_in_fabric << target.resp_port
 
     for i in range(num_targets):
         class Dst_to_Target(AddToState(i = i)):
-            rsp: fabric.targets_to_bridge[i] << targets[i].resp_port
-#            req: fabric.targets_from_bridge[i] >> targets[i].req_port
+            rsp: MuchBinding.fabric.targets_to_bridge[i] << MuchBinding.targets[i].resp_port
 
 
-print('XXXXXX elaboration')
 @cli.Test(MuchBinding())
 def the_test(top):
     print('testing to see if all the bindings worked')
