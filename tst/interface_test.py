@@ -13,27 +13,29 @@ from purple import Interface, Integer, Record, Port, ReversePort, Enumeration, M
 import cli
 
 
-class AXI(Interface):
+class AXI_Definitions:
     Burst = enum.Enum('AXI.Burst', dict(Fixed = 0, Incr = 1, Wrap = 2))
     Resp = enum.Enum('AXI.Resp', dict(Okay = 0, ExOkay = 1, DecErr = 2, SlvErr = 3))
 
+
+class AXI_Channels:
     class AR(Record):
         _dp_stringifiers = dict(addr = hex, id = hex, burst = (lambda e: e.name))
         addr: Integer[...]
         length: Integer[...]
-        burst: Enumeration[Burst]
+        burst: Enumeration[AXI_Definitions.Burst]
         id: Integer[...]
 
     class R(Record):
         data: Integer[...]
         last: Boolean
-        resp: Enumeration[Resp]
+        resp: Enumeration[AXI_Definitions.Resp]
         id: Integer[...]
 
     class AW(Record):
         addr: Integer[...]
         length: Integer[...]
-        burst: Enumeration[Burst]
+        burst: Enumeration[AXI_Definitions.Burst]
         id: Integer[...]
 
     class W(Record):
@@ -45,15 +47,17 @@ class AXI(Interface):
     class B(Record):
         _dp_default_stringifier = hex
         _dp_stringifiers = dict(resp = (lambda e: f'{e.name}({e.value})'))
-        resp: Enumeration[Resp]
+        resp: Enumeration[AXI_Definitions.Resp]
         id: Integer[...]
 
-    ar: Port[AR]
-    r: ReversePort[R]
 
-    aw: Port[AW]
-    w: Port[W]
-    b: ReversePort[B]
+class AXI(Interface, AXI_Definitions, AXI_Channels):
+    ar: Port[AXI_Channels.AR]
+    r: ReversePort[AXI_Channels.R]
+
+    aw: Port[AXI_Channels.AW]
+    w: Port[AXI_Channels.W]
+    b: ReversePort[AXI_Channels.B]
 
 
 class Initiator(Model):

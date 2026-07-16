@@ -164,6 +164,7 @@ assert top.third_b == 4
 
 try:
     print('check detection of bad annotation')
+    # FIXME this passes but prevents some forward-declaration syntax in base classes
     class Bad(Model):
         name_of_unimported: Tuple[Boolean]
 except:

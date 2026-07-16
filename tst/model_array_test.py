@@ -11,7 +11,7 @@ Array test for Model subclass
 * hierarchical array with ports
 '''
 
-from purple import Model, Port, Integer, ArrayIndex
+from purple import Model, Port, Integer, ArrayIndex, AddToState
 import cli
 import random
 
@@ -70,9 +70,9 @@ def the_test(top):
 class TopA(cli.Test.Top):
     'manual binding'
     x: 4 * Sub2
-    x._0.p_out >> x._1.p_in
-    x._1.p_out >> x._2.p_in
-    x._2.p_out >> x._3.p_in
+    bind0: x._0.p_out >> x._1.p_in
+    bind1: x._1.p_out >> x._2.p_in
+    bind2: x._2.p_out >> x._3.p_in
 
 cli.Test(TopA())(the_test)
 
@@ -81,16 +81,18 @@ class TopB(cli.Test.Top):
     'index-based binding'
     x: 4 * Sub2
     for i in range(3):
-        x[i].p_out >> x[i + 1].p_in
+        class Binder(AddToState(i = i)):
+            bindx: TopB.x[i].p_out >> TopB.x[i + 1].p_in
 
 cli.Test(TopB())(the_test)
 
 
 class TopC(cli.Test.Top):
-    'iteration-based binding'
+    'iteration-based binding (not so good with py-3.14)'
     x: 4 * Sub2
-    for src,dst in zip(x[:3], x[1:]):
-        src.p_out >> dst.p_in
+    for src,dst in zip(range(3), range(1,4)):
+        class Binder(AddToState(src = src, dst = dst)):
+            bind: TopC.x[src].p_out >> TopC.x[dst].p_in
 
 cli.Test(TopC())(the_test)
 
@@ -108,19 +110,21 @@ class Second(Model):
 class First(Model):
     chain: 4 * Second
     p_out: Port[Integer[5]] >> chain[0].p_in
-    for src,dst in zip(chain[:3], chain[1:]):
-        src.p_out >> dst.p_in
+    for src,dst in zip(range(3), range(1,4)):
+        class Binder(AddToState(src = src, dst = dst)):
+            bind: First.chain[src].p_out >> First.chain[dst].p_in
+
 
 class Zeroth(cli.Test.Top):
     stuff: 3 * First
 
 @cli.Test(Zeroth())
-def the_test(top):
+def the_test(zeroth):
     print('test array of array')
     yield
 
     for _ in range(40):
-        first = top.stuff[random.randrange(3)]
+        first = zeroth.stuff[random.randrange(3)]
         v = random.randrange(5)
         src = random.randrange(-1, 3)
         src_m = first if src < 0 else first.chain[src]
@@ -130,5 +134,5 @@ def the_test(top):
         yield
         assert dst_m.a == expected % 5
 
-    for c in top.stuff:
+    for c in zeroth.stuff:
         print(list(xi.a for xi in c.chain))

@@ -69,16 +69,17 @@ from cli import args
 
 print('Declaring pure-functional WXYZ messages')
 
-class WXYZ:
+class WXYZ_Definitions:
     Opcode = enum.Enum('WXYZ_Opcode', dict(Rd = 0, Wr = 1, Msg = 0x57))
     SAI = enum.Enum('WXYZ_SAI', dict(Trusted = 0, OS_W = 0x99, BIOS = 0x33))
 
+class WXYZ_32BitWords:
     class Data32(Record):
         data: BitVector[32]
 
     class Header(Record):
         header: BitVector[8]
-        opcode: Enumeration[Opcode]
+        opcode: Enumeration[WXYZ_Definitions.Opcode]
         source: BitVector[8]
         destination: BitVector[8]
 
@@ -87,14 +88,15 @@ class WXYZ:
         destination: BitVector[8]
 
     class SAI_Value(Record):
-        sai: Enumeration[SAI]
+        sai: Enumeration[WXYZ_Definitions.SAI]
 
     Word32 = Data32 | Header | ID_MSBs | SAI_Value
 
+class WXYZ(WXYZ_Definitions, WXYZ_32BitWords):
     class Flit32(Record):
         eom: Boolean
         posted_not_nonposted: Boolean
-        word: Word32
+        word: WXYZ_32BitWords.Word32
 
     class Bit_Accurate_Flit32(Record):
         eom: Boolean
@@ -104,10 +106,11 @@ class WXYZ:
 
 print('Declaring pure-functional ABC messages')
 
-class ABC:
+class ABC_Definitions:
     Opcode = enum.Enum('ABC_Opcode', dict(WithData = 0x15, HeaderOnly = 0x14))
     ID = enum.Enum('ABC_ID', dict(source = 4, destination = 6))
 
+class ABC_PacketTypes:
     class DTF_Data(Record):
         header: BitVector[25]
         data: BitVector[64]
@@ -139,14 +142,15 @@ class ABC:
 
     Payload = DTF_Data | DTF_Control | Virtual_Wire | WXYZ | Credit_Return
 
+class ABC(ABC_Definitions, ABC_PacketTypes):
     class Packet(Record):
-        src: Enumeration[ID]
-        dst: Enumeration[ID]
-        opcode: Enumeration[Opcode]
+        src: Enumeration[ABC_Definitions.ID]
+        dst: Enumeration[ABC_Definitions.ID]
+        opcode: Enumeration[ABC_Definitions.Opcode]
         channel: BitVector[4]
         credit: BitVector[4]
         credit_channel: BitVector[4]
-        payload: Payload
+        payload: ABC_PacketTypes.Payload
 
     class Bit_Accurate_Packet(Record):
         header: BitVector[64]
@@ -544,7 +548,7 @@ class Top(Model):
         _.to_vwire          >> vwire_source_and_sink.from_channel,
     ]
 
-    rx.from_channel << tx.to_channel,
+    bind: rx.from_channel << tx.to_channel
 
 
 print('Pure-functional simulation: elaboration')

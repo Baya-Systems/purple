@@ -391,6 +391,7 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
             if isinstance(annot, annotationlib.ForwardRef):
                 rv = annot.evaluate(format = annotationlib.Format.STRING)
                 assert '__annotationlib_name_' not in rv
+                assert False, f'{annot_name}: {rv}'
             elif isinstance(annot, list):
                 # special case; forward-ref will return a list (eg for "rules") which can contain
                 #   - evaluated things like methods
