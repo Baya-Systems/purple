@@ -98,13 +98,14 @@ class SimpleReOrderBuffer(Model):
 
 
 class Simple_Implementation_Testbench(Implementation_Testbench):
+    base = Implementation_Testbench
     dut: SimpleReOrderBuffer[
-        bind_valid_ready(_.request_in_a, req_out_a),
-        bind_valid_ready(_.request_in_b, req_out_b),
-        bind_valid_ready(req_in, _.request_out),
-        bind_valid_ready(_.completion_in, comp_out),
-        bind_valid_ready(comp_in_a, _.completion_out_a),
-        bind_valid_ready(comp_in_b, _.completion_out_b),
+        bind_valid_ready(_.request_in_a, base.req_out_a),
+        bind_valid_ready(_.request_in_b, base.req_out_b),
+        bind_valid_ready(base.req_in, _.request_out),
+        bind_valid_ready(_.completion_in, base.comp_out),
+        bind_valid_ready(base.comp_in_a, _.completion_out_a),
+        bind_valid_ready(base.comp_in_b, _.completion_out_b),
     ]
 
 

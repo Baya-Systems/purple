@@ -28,18 +28,19 @@ class Config:
     num_contexts = 6
 
 
-class Types:
+class Leaf_Types:
     Payload = Integer[2**Config.payload_width]
     RequesterId = Integer[2**Config.source_id_width]
     CompleterId = Integer[Config.num_contexts * 2**Config.source_id_width]
 
+class Types(Leaf_Types):
     class RequesterPacket(Record):
-        payload: Payload
-        txn_id: RequesterId
+        payload: Leaf_Types.Payload
+        txn_id: Leaf_Types.RequesterId
 
     class CompleterPacket(Record):
-        payload: Payload
-        txn_id: CompleterId
+        payload: Leaf_Types.Payload
+        txn_id: Leaf_Types.CompleterId
 
 
 ContextNumber = Integer[Config.num_contexts]
@@ -59,7 +60,7 @@ class TxnContext(Record):
 
 class ReOrderBufferSpec(Model):
     txn_queue: Config.num_contexts * TxnContext
-    next_request: (Types.RequesterPacket | Constant[None]) = None
+    next_request: (Types.RequesterPacket | None) = None
     next_request_was_from_a: Boolean
 
     request_in_a: Port[Types.RequesterPacket]

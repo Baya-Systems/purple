@@ -78,22 +78,17 @@ class PurpleTypeProxy:
 
     if we refer to a previously-declared sub-component, we need to be able to get a
     similar reference for its internal sub-state
+
+    FIXME add a slice-as-final-name-element option, which is necessary if
+        the slice is imprecise eg x[-1] or x[3:] so can't be evaluated till
+        the type is known
+        if type is Array, we know its bounds
+        if type is HandlerArray, somehow get bounds from bind-partner
+    See below at the moment it just does str(index)
     '''
-    # FIXME unclear if this class is even needed any more as Binding is absorbing everything
-    # possibly forward-refs to rules/clocks in abstract base classes?
-    # OK obviously needed for port-to-port binding eval but most of the methods seem redundant?
     def __init__(self, name, purple_type, hierarchical_name):
         self.name = (*hierarchical_name, name)
         self.purple_type = purple_type
-
-    def LEGACYresolve(self, discovered_forename, top_purple_type):
-        # FIXME IS THIS CALLED ANY MORE?
-        if self.name[0] == '_':
-            self.name = discovered_forename, *self.name[1:]
-            purple_type = top_purple_type
-            for sub_name in self.name[1:]:
-                purple_type = purple_type._dp_state_types[sub_name]
-            self.purple_type = purple_type
 
     def __getattr__(self, attr_name):
         if self.purple_type is common.UniqueObject:
@@ -108,12 +103,15 @@ class PurpleTypeProxy:
         # OR ONLY FOR RAW NAMES?
         # FIXME IF WE CAN FIND THE TYPE FROM raw-annotations WE CAN DO BETTER
         if isinstance(index, slice):
+            assert False
             return [self[i] for i in self.purple_type._dp_array_slice_range(index)]
         elif self.purple_type is common.UniqueObject:
             return getattr(self, str(index))
         elif index >= 0 and index < self.purple_type._dp_array_length:
+            assert False
             return getattr(self, self.purple_type._dp_array_2attrname(index))
         else:
+            assert False
             raise IndexError
 
     def __lshift__(self, bind_target):
@@ -161,13 +159,6 @@ class Binding:
             self.lhs = PurpleTypeProxy(discovered_forename, purple_type, ())
         if inspect.isfunction(self.rhs):
             self.rhs = PurpleTypeProxy(self.rhs.__name__, None, ())
-
-    def LEGACYconvert_to_names(self):
-        if inspect.isfunction(self.rhs):
-            self.rhs = PurpleTypeProxy(self.rhs.__name__, None, ())
-        assert hasattr(self.lhs, 'name'), self.lhs
-        assert self.lhs.name[0] != '_' and self.rhs.name[0] != '_'
-        return self
 
     def __str__(self):
         lhs = '.'.join(self.lhs.name)
@@ -283,13 +274,14 @@ def eval_string_annotation(ann_str: str, owner):
 
         https://github.com/python/cpython/issues/138425
         if we use Format.VALUE or Format.FORWARDREF, it just assumes MyClass[a << b]
-        returns MyClass; a<<b is not evaluated
+        and returns MyClass; a<<b is not evaluated
     '''
     assert isinstance(owner, (PurpleHierarchicalMetaClass, ATSMetaClassBase))
     globs = vars(sys.modules[owner.__module__])
 
     # Recover enclosing-function locals captured as closure cells in __annotate__
     locs = dict(vars(owner))
+
     annotate = getattr(owner, '__annotate__', None)
     if annotate is not None:
         freevars = annotate.__code__.co_freevars
