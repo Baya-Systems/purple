@@ -212,8 +212,7 @@ def AddToState(**cls_variables):
             return f'{statename}_{clsv}'
 
     def init_subclass(cls, **kwargs):
-        current_dp_cls = MetaClassState.peek().namespace
-        current_dp_cls['_dp_addtostate_classes'].append(cls)
+        MetaClassState.peek().addtostate_classes.append(cls)
 
     cls_variables['adapt_name'] = classmethod(default_nameconv)
     cls_variables['__init_subclass__'] = classmethod(init_subclass)
@@ -235,9 +234,9 @@ class MetaClassState:
     # FIXME we may be adding the same binding multiple times as
     # we re-evaluate annotations
     @classmethod
-    def push(cls, namespace):
+    def push(cls):
         self = cls()
-        self.namespace = namespace
+        self.addtostate_classes = []
         self.raw_bindings = []
         self.new_bindings = []
         self.enable_binding_capture = False
@@ -280,6 +279,11 @@ def eval_string_annotation(ann_str: str, owner):
 
     (Claude generated, only works for classes)
     needed because FORWARDREF ignores class-getitem or metaclass-getitem
+    which may be a bug in CPython which will be fixed in a future release
+
+        https://github.com/python/cpython/issues/138425
+        if we use Format.VALUE or Format.FORWARDREF, it just assumes MyClass[a << b]
+        returns MyClass; a<<b is not evaluated
     '''
     assert isinstance(owner, (PurpleHierarchicalMetaClass, ATSMetaClassBase))
     globs = vars(sys.modules[owner.__module__])
@@ -320,42 +324,39 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
 
     @classmethod
     def __prepare__(metacls, name, bases):
-        ns = super().__prepare__(name, bases)
-        ns['_dp_addtostate_classes'] = []
-        MetaClassState.push(ns)
-        return ns
+        MetaClassState.push()
+        return super().__prepare__(name, bases)
 
     def __new__(metacls, name, bases, classdict):
         mc_state = MetaClassState.peek()
-        assert mc_state.namespace is classdict
         cls = type.__new__(metacls, name, bases, classdict)
-
         unique_obj = common.UniqueObject
 
         # capture raw initial values, which are evaluated on the fly by python,
         # and replace with Proxy objects for binding evaluation
-
-        # CPython bug: https://github.com/python/cpython/issues/138425
-        # if we use Format.VALUE or Format.FORWARDREF, it just assumes MyClass[a << b]
-        # returns MyClass; a<<b is not evaluated
-
         if '_' in vars(cls):
             delattr(cls, '_')
         cls_annotations = MetaClassState.get_annotations(cls, annotationlib.Format.STRING)
         raw_initial_value = dict()
         for n in cls_annotations:
-            raw_initial_value[n] = getattr(cls, n, unique_obj)
+            riv = getattr(cls, n, unique_obj)
+            if isinstance(riv, PurpleTypeProxy):
+                riv = unique_obj
+            raw_initial_value[n] = riv
             setattr(cls, n, PurpleTypeProxy(n, unique_obj, ()))
 
         # and for addtostate nested classes
-        for ats_class in cls._dp_addtostate_classes:
+        for ats_class in mc_state.addtostate_classes:
             if hasattr(ats_class, '_'):
                 delattr(ats_class, '_')
             ats_annotations = MetaClassState.get_annotations(ats_class, annotationlib.Format.STRING)
 
             for n in ats_annotations:
                 name_in_cls = ats_class.adapt_name(n)
-                raw_initial_value[name_in_cls] = getattr(ats_class, n, unique_obj)
+                riv = getattr(ats_class, n, unique_obj)
+                if isinstance(riv, PurpleTypeProxy):
+                    riv = unique_obj
+                raw_initial_value[name_in_cls] = riv
 
             # everything from the class being declared is available in the ATS class
             setattr(ats_class, name, cls)
@@ -364,7 +365,7 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
             for n in ats_annotations:
                 cls_proxy = PurpleTypeProxy(name_in_cls, unique_obj, ())
                 setattr(cls, name_in_cls, cls_proxy)
-                setattr(ats_class, name_in_cls, cls_proxy)
+                setattr(ats_class, n, cls_proxy)
 
         # FIXME
         # problem here? want to preserve non-Purple type annotations
@@ -416,7 +417,7 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         raw_annotations = {n:re_eval(n, a, cls) for n,a in cls_annotations.items()}
 
         # and evaluate within addtostate nested classes
-        for ats_class in cls._dp_addtostate_classes:
+        for ats_class in mc_state.addtostate_classes:
             mc_state.enable_binding_capture = False
             if '_' in vars(ats_class):
                 delattr(ats_class, '_')

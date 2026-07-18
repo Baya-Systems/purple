@@ -211,7 +211,6 @@ class PurpleComponent:
             base_initial_value = {n:base_initial_value._dp_raw_getattr(n) for n in cls._dp_state_types}
         else:
             # (partial) dict of directed modifications
-            print('ZZZZZZZZ', cls, owner_initial_value, base_initial_value)
             assert isinstance(base_initial_value, dict), 'instantiated records initial values must be dicts or records'
 
         for state_element_name,override in base_initial_value.items():
