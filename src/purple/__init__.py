@@ -22,8 +22,14 @@ FIXME
         v important for py-3.14
         class X(Model):
             a: (10 * Port[Y]) << HandlerArray(10, my_method)
-            b: (10 * Port[Y)) << a
-            c: (7 * Port[Y]) << b[1:8]
+            b: (10 * Port[Y)) << another_port_array
+            c: (7 * Port[Y]) << another_array[1:8]
+            c: (7 * Port[Y]) << subcomponent_array[1:8].port
+                # last one looks non-python but should work because Proxy is needed
+            bind1: subcomponent_array[1:8].port << other.port[0:7] + [first]
+            bind2: subcomponent_array[1:8].port << [first] + other.port[0:7]
+                # do we store in binding RHS/LHS names?
+                # if not, need to know the array lengths
     state variable type for clocked sim integer where two processes change the value
         eg num_outstanding: DualProcessCounter[limit]
         def clocked(self):
