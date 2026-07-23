@@ -97,8 +97,6 @@ from purple import Model, Record, Integer, Port, FIFO_Input_Port, ArrayIndex, Ha
 import cli
 import random
 
-from purple.metaclass import MetaClassState
-
 
 print('Basic push port')
 

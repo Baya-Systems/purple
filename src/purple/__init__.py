@@ -9,15 +9,8 @@ lint is not fully clean and probably cannot be, but valuable
     ruff check tst --ignore F821 --ignore F811 --ignore E722
 
 FIXME
-    py3.14 breaks everything
-        with 3.13 elaboration is not deterministic; fix this in 3.14
+    with 3.13 elaboration is not deterministic; fix this in 3.14
         problem seems to be the order of rules, which can affect randomised simulators
-        issues I would like to improve
-            loops binding, would be nice to loop over an array not range(array_size)
-                better: allow port_array << other_port_array / port_array >> handler_array
-                but must support slices so subsets/offsets-for-pipelines
-            need to test conditional parts of class, ternary ops in annotations, etc
-            was it a good idea to keep the proxy objects (broke Enumeration but simplifies inheritance)?
     ability to bind arrays to arrays
         v important for py-3.14
         class X(Model):
@@ -33,17 +26,15 @@ FIXME
     state variable type for clocked sim integer where two processes change the value
         eg num_outstanding: DualProcessCounter[limit]
         def clocked(self):
-            num_outstanding.a += 1
+            num_outstanding += 1
             if num_outstanding == 57: do_stuff()
         def handled(self):
             if num_outstanding == 57: do_stuff()
-            num_outstanding.b -= 1
-        do not like this syntax.  should be a leaf.  should be hidden
+            num_outstanding -= 1
         only possible for commutative operations eg not for (+1) and (*2)
-        so maybe make a very specific integer-with-multiple-additions only
         possibly things like Tuple[] also have commutative operations eg append an item and modify another item
         no idea how to achieve this
-            only relevant to clocked-simulator (but should work for atomic-rule)
+            only needed for clocked-simulator (but should work for atomic-rule)
             maybe we need to define a CommutativeOperation base class
             and store state changes as type-specific subclass objects (when needed) in LeafStateChange
             then in Clock.event() we would merge commutative ops
@@ -62,26 +53,22 @@ FIXME
             def make_b(self): return blah
     clocked simulator should include time in rule printout headers
     invariants
-    very common case is to have a variable that may be invalid or valid
-        so create a convenient way to do this
-        class A(Model):
-            x: MyRecord | Const[None] # needs "if x is None"  maybe allow (MyRecord | None)
-            y: Optional[MyRecord] # same but has a method y.is_valid() which may not fly for Leaf
-            z: Optional[MyRecordorLeaf] # syntactic sugar for Const[None]
+    test for my_element: (MyType | None)
     rules with parameters get very slow
         rather than generating a separate rule for each parameter set during elaboration
         choose a parameter set after rule selection, by randomisation of record/leaf
         saves memory, saves startup time, might increase simulation time
     coverage definition methods
     array with enum keys
-            myarray: Array[enum_class, element_class] = {dict_of_initial_values}
+        myarray: Array[enum_class, element_class] = {dict_of_initial_values}
     save/restore
-    ability to suppress a rule in subclass
+    test ability to suppress a rule in subclass
     cosimulation with Verilog-DPI
     does Interface generalise to using registered-output port and initial values?
     add randomisation capability to records and leaves
         select among all-possible-values, or create on-the-fly?
         don't create all values till first call, or require a randomiser object to be created
+        allow invariants in Record to reduce number of options?
     when you get a clocked-rule name wrong in Clock[rule_name] you get a very confusing error
     bug: can't have Tuple of Leaf
         this is temporarily hacked to work, but
@@ -95,15 +82,10 @@ FIXME
     configurable models
         how to have an array of non-identical things (eg buffers of different message types or different lengths)
             myarray: Array[list_of_types] = [list_of_initial_values]
-
-        mycomponents: Subcomponents[dict_of_types] = {dict_of_initial_values}
-            # this gives you whatever names you want matched to whatever types
-            # dict should support any of integer/enum/string keys, same keys for types and initial-values
-
-        add_state(f'my_thing_{qualifier}', Integer[max_function(qualifier)], first_function(qualifier))
-        Element[f'my_thing_{qualifier}']: Integer[max_function(qualifier)] = first_function(qualifier)
-
-    can I have a Tuple of Union?
+            mycomponents: Subcomponents[dict_of_types] = {dict_of_initial_values}
+                # this gives you whatever names you want matched to whatever types
+                # dict should support any of integer/enum/string keys, same keys for types and initial-values
+    can I have a Tuple of Union?  test it
     change Generic so that it sets the class name to something useful unless it has been overridden
     array-index variant allowing modification after elab
         only sets initial value
@@ -138,7 +120,7 @@ FIXME
 
 cleanup
     documentation
-    move or copy all open issues/fixmes to documentation
+    move or copy all open issues/fixmes to documentation or GH issues
     some fixmes are out of date and have been fixed
     am I allowing partially-undef records to be compared for equality?  is it OK?
     search for all " if _dp_class_is_something " and try to replace with classmethods
@@ -151,17 +133,17 @@ cleanup
         If the traceback of the active exception is modified in an except clause, a subsequent raise statement re-raises the exception with the modified traceback.  also true for __exit__? do we even re-raise or just print
         and offer to post-mortem or re-run?
     names of generated classes
-    test that ambiguous references in declaration are actually used rather than bugs (eg "stophere") - or maybe remove ambiguous references completely (may be needed for rules?)
     good error messages, eg if combined initial values don't match any union option
     type checking on class declaration
         rules are type-annotated with (finite?) Record and Leaf types
         ports bind to handlers with the right Record/Leaf type
         ports bind to ports with the right Record/Leaf type
+        port payload type is a record or a leaf
         ports bind in the right direction and fan in/out is controlled
+        state elements have Purple class types
+        suppress checking option for abstract base classes (may need to re-run annotation evaluation?)
     replace star-import with named set of things in this file __init__.py
     support copying records from superclasses and subclasses?
-    force port payload type to be a record or a leaf
-    can ArrayIndex be mutable, so just used as an initial value but then changes (eg for initialising a linked-list)?
     bad error message when clocked-process name is misspelt
 
 tests todo
@@ -170,16 +152,6 @@ tests todo
     enum, boolean, constant
     parameterised model and record including partial-specialisation
     shallow and deep copy of static-records to/from transient-records
-
-need to decide on immediate-visibility in clocked rules
-    at the moment I am in favour of immediate visibility, because of a bad experience with
-    passing a static-record by reference through a port
-    also seems very strange to allow multiple in-place updates if the code cannot see the
-    previous updates
-    note that updates to the same leaf from different clocked rules at the same cycle
-        should never be allowed, because determinism in the general case is really hard
-        (eg one rule does x /= 2 and another rule does x += 1)
-    this simplifies bitvector
 
 could this go full-bs?
     that is run a clocked simulation from a set of atomic rules
@@ -197,7 +169,12 @@ could this go full-bs?
             can you pipeline, so multiple instances of the same rule
                 read all at the start?
 
-could add a VCD generation, but probably only useful for clocked
+could add a VCD generation, but probably only useful for clocked and only for state elements
+        that are some kind of finite-integer or boolean.
+    could add an optional VCD method to leaf classes that by default raises an error
+    would also need to support functions that get the current value of something, in case
+        VCD needs to include the output of combinatorial logic.  these will return Record or
+        int or bool and will not always have a known Purple type
 
 are greek characters just a distraction?
     πψτηον
