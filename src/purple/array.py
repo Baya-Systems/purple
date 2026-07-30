@@ -68,6 +68,12 @@ class ArrayBase:
         else:
             self.__setattr__(self._dp_array_2attrname(index), value)
 
+    def __lshift__(self, new_value):
+        for i in range(self._dp_array_length - 1):
+            self[i] = self[i + 1]
+        self[self._dp_array_length - 1] = new_value
+        return self
+
     @classmethod
     def _dp_merge_initial_value(cls, owner_initial_value, base_initial_value):
         ''' makes the initial values for an instance of cls in owner-cls

@@ -62,6 +62,13 @@ for _ in range(10):
 assert len(r) == 4
 assert len(list(OfLeafStandalone._dp_all_possible_values())) == 5**4
 
+print('shifting-record')
+r = OfLeafStandalone((1,2,3,4))
+s = r
+r << 1
+assert r == OfLeafStandalone((2,3,4,1))
+assert s is r, 'checking it is in-place modified'
+
 
 print('of-leaf')
 for _ in range(10):
@@ -309,6 +316,15 @@ def run(top):
 
         assert my_array.x[i0].x[i1] == v
         yield
+
+    print('shift-model')
+    top.of_leaf_standalone = OfLeafStandalone((1, 2, 3, 4))
+    yield
+
+    top.of_leaf_standalone << 2
+    yield
+
+    assert top.of_leaf_standalone == OfLeafStandalone((2, 3, 4, 2))
 
 
 print('static-array-of-record/leaf-with-initialisation')
