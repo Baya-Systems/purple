@@ -53,7 +53,6 @@ FIXME
             def make_b(self): return blah
     clocked simulator should include time in rule printout headers
     invariants
-    test for my_element: (MyType | None)
     rules with parameters get very slow
         rather than generating a separate rule for each parameter set during elaboration
         choose a parameter set after rule selection, by randomisation of record/leaf

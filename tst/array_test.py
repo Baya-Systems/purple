@@ -21,7 +21,7 @@ Array test
 * static instantiation of array-of-record/leaf
 '''
 
-from purple import Record, Integer, ArrayIndex, FromArrayIndex
+from purple import Record, Integer, ArrayIndex, FromArrayIndex, Pipeline, FIFO, GuardFailed, RdEmptyFIFO
 import cli
 import random
 
@@ -62,12 +62,20 @@ for _ in range(10):
 assert len(r) == 4
 assert len(list(OfLeafStandalone._dp_all_possible_values())) == 5**4
 
+
 print('shifting-record')
-r = OfLeafStandalone((1,2,3,4))
+r = Pipeline[OfLeafStandalone]((1,2,3,4))
 s = r
-r << 1
-assert r == OfLeafStandalone((2,3,4,1))
+r.advance_pipeline(new_value = 1)
 assert s is r, 'checking it is in-place modified'
+assert r == OfLeafStandalone((2,3,4,1))
+assert r[0] == r.current_output()
+assert r[0] == 2
+r.advance_pipeline(new_value = 1)
+assert s is r, 'checking it is in-place modified'
+assert r == OfLeafStandalone((3,4,1,1))
+assert r[0] == r.current_output()
+assert r[0] == 3
 
 
 print('of-leaf')
@@ -263,7 +271,7 @@ assert a.x[1].x[0] == 1
 print('static-array-of-record/leaf')
 
 class Top(cli.Test.Top):
-    of_leaf_standalone: OfLeafStandalone
+    of_leaf_standalone: Pipeline[OfLeafStandalone]
     of_leaf: OfLeaf
     of_record_standalone: OfRecordStandalone
     of_record: OfRecord
@@ -273,6 +281,9 @@ class Top(cli.Test.Top):
     of_array_dt: OfArrayDT
     of_array_tt: OfArrayTT
     of_array_tr: OfArrayTR
+    fifo_ex: FIFO[OfLeafStandalone, True, True]
+    fifo_gd: FIFO[OfLeafStandalone]
+
 
 @cli.Test(Top())
 def run(top):
@@ -318,13 +329,62 @@ def run(top):
         yield
 
     print('shift-model')
-    top.of_leaf_standalone = OfLeafStandalone((1, 2, 3, 4))
+    for x in range(4):
+        top.of_leaf_standalone.advance_pipeline(x)
+        yield
+
+    for x in range(4):
+        assert top.of_leaf_standalone.current_output() == x
+        top.of_leaf_standalone.advance_pipeline(4)
+        yield
+
+    print('FIFO-model')
+    try:
+        gd = False
+        top.fifo_gd.pop()
+    except GuardFailed:
+        gd = True
+        print('OK guard on pop-from-empty')
+    assert gd, 'no guard'
+
+    try:
+        ve = False
+        top.fifo_ex.pop()
+    except RdEmptyFIFO:
+        ve = True
+        print('OK exception on pop-from-empty')
+    assert ve, 'no exception'
     yield
 
-    top.of_leaf_standalone << 2
-    yield
+    for _ in range(5):
+        for fifo in top.fifo_gd, top.fifo_ex:
+            for i,x in enumerate((4,3,2,1)):
+                assert fifo.load() == i
+                fifo.push(x)
+                yield
+                assert not fifo.empty()
+            assert fifo.full()
 
-    assert top.of_leaf_standalone == OfLeafStandalone((2, 3, 4, 2))
+            for i,x in enumerate((4,3,2,1)):
+                assert fifo.pop() == x
+                assert fifo.load() == 3 - i
+                yield
+                assert not fifo.full()
+            assert fifo.empty()
+
+            for i,x in enumerate((3,2)):
+                assert fifo.load() == i
+                fifo.push(x)
+                yield
+                assert not fifo.empty()
+            assert not fifo.full()
+
+            for i,x in enumerate((3,2)):
+                assert fifo.pop() == x
+                assert fifo.load() == 1 - i
+                yield
+                assert not fifo.full()
+            assert fifo.empty()
 
 
 print('static-array-of-record/leaf-with-initialisation')

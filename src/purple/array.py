@@ -26,7 +26,7 @@ FIXME:
     eg for transients some copying is shallow and ArrayIndex will reflect the source
 '''
 
-from . import common, metaclass, parameterise, record, model, leaf
+from . import common, metaclass, parameterise, record, model, leaf, state
 import inspect
 
 
@@ -54,25 +54,40 @@ class ArrayBase:
         combined_len = self._dp_array_length + other._dp_array_length
         return Array[combined_len, self._dp_array_type](tuple(self) + tuple(other))
 
+    @classmethod
+    def _dp_array_2attrname(cls, index):
+        # support negative indices
+        while index < 0:
+            index += cls._dp_array_length
+        if index >= cls._dp_array_length:
+            raise IndexError
+        return f'_{index:0{cls._dp_array_idx_width}}'
+
+    @classmethod
+    def _dp_array_2index(cls, attrname):
+        return int(attrname.replace('_', ''))
+
+    def _dp_array_adjust_index(self, index):
+        # for Pipeline and FIFO derived classes
+        return index
+
     def __getitem__(self, index):
         if isinstance(index, slice):
-            as_tuple = tuple(self[i] for i in self._dp_array_slice_range(index))
+            slice_range = range(self._dp_array_length)[index]
+            as_tuple = tuple(self[i] for i in slice_range)
             return Array[len(as_tuple), self._dp_array_type](as_tuple)
         else:
-            return self.__getattribute__(self._dp_array_2attrname(index))
+            adj_index = self._dp_array_adjust_index(index)
+            return self.__getattribute__(self._dp_array_2attrname(adj_index))
 
     def __setitem__(self, index, value):
         if isinstance(index, slice):
-            for i,new_v in zip(self._dp_array_slice_range(index), value):
+            slice_range = range(self._dp_array_length)[index]
+            for i,new_v in zip(slice_range, value):
                 self[i] = new_v
         else:
-            self.__setattr__(self._dp_array_2attrname(index), value)
-
-    def __lshift__(self, new_value):
-        for i in range(self._dp_array_length - 1):
-            self[i] = self[i + 1]
-        self[self._dp_array_length - 1] = new_value
-        return self
+            adj_index = self._dp_array_adjust_index(index)
+            self.__setattr__(self._dp_array_2attrname(adj_index), value)
 
     @classmethod
     def _dp_merge_initial_value(cls, owner_initial_value, base_initial_value):
@@ -130,52 +145,18 @@ def Array(array_length, cls):
     is_model = issubclass(cls, model.Model)
     purple_base = model.Model if is_model else record.Record
 
-    def fix_index(i, array_length = array_length):
-        return (array_length + i) if i < 0 else i
-
-    def slice_range(index,
-        array_length = array_length,
-        fix_index = fix_index,
-    ):
-        if index.step is None or index.step > 0:
-            start = 0 if index.start is None else fix_index(index.start)
-            stop = array_length if index.stop is None else fix_index(index.stop)
-            step = 1 if index.step is None else index.step
-        else:
-            start = (array_length - 1) if index.start is None else fix_index(index.start)
-            stop = -1 if index.stop is None else fix_index(index.stop)
-            step = index.step
-        return range(start, stop, step)
-
-    def to_attrname(index,
-        array_length = array_length,
-        int_width = len(str(array_length - 1)),
-        fix_index = fix_index,
-    ):
-        fixed_index = fix_index(index)
-        if fixed_index >= array_length or fixed_index < 0:
-            raise IndexError
-        return f'_{fixed_index:0{int_width}}'
-
-    def to_index(attrname):
-        return int(attrname.replace('_', ''))
-
     class TheArray(ArrayBase, purple_base):
         _dp_array_is_model = is_model
         _dp_array_length = array_length
         _dp_array_type = cls
-        _dp_array_2attrname = staticmethod(to_attrname)
-        _dp_array_2index = staticmethod(to_index)
-        _dp_array_slice_range = staticmethod(slice_range)
+        _dp_array_idx_width = len(str(array_length - 1))
 
         for i in range(array_length):
-            class Element(metaclass.AddToState(e_name = to_attrname(i), ArrayType = cls)):
+            class Element(metaclass.AddToState(e_name = f'_{i:0{_dp_array_idx_width}}', ArrayType = cls)):
                 e: ArrayType
 
     return TheArray
 
-
-array_index_for_initial_value = []
 
 class ArrayIndexBase(leaf.Leaf):
     class InitialValue:
@@ -279,3 +260,70 @@ class HandlerArray:
         handler.__name__ = f'{self.method_name}_dp_arrayhandler_{index}'
         setattr(self.owner_cls, handler.__name__, handler)
         return handler
+
+
+@parameterise.Generic
+def Pipeline(array_cls):
+    class PipelineArray(array_cls):
+        end_index: state.ModuloInteger[array_cls._dp_array_length] = 0
+
+        def _dp_array_adjust_index(self, index):
+            return self.end_index + index
+
+        def __eq__(self, other):
+            if other._dp_array_length != self._dp_array_length:
+                return False
+            for i in range(self._dp_array_length):
+                if self[i] != other[i]:
+                    return False
+            return True
+
+        def current_output(self):
+            return self[0]
+
+        def advance_pipeline(self, new_value):
+            self[0] = new_value
+            self.end_index += 1
+
+    return PipelineArray
+
+
+RdEmptyFIFO = common.PurpleException.subclass('RdEmptyFIFO')
+WrFullFIFO = common.PurpleException.subclass('WrFullFIFO')
+
+@parameterise.Generic
+def FIFO(array_cls, read_empty_is_error = False, write_full_is_error = False):
+    class FIFO(array_cls):
+        _dp_fifo_read_empty = RdEmptyFIFO if read_empty_is_error else common.GuardFailed
+        _dp_fifo_write_full = WrFullFIFO if write_full_is_error else common.GuardFailed
+
+        def _dp_array_adjust_index(self, index):
+            return (self.rd_index + index) % self._dp_array_length
+
+        rd_index: state.ModuloInteger[2 * array_cls._dp_array_length] = 0
+        wr_index: state.ModuloInteger[2 * array_cls._dp_array_length] = 0
+
+        def full(self):
+            return self.rd_index == self.wr_index + self._dp_array_length
+
+        def empty(self):
+            return self.rd_index == self.wr_index
+
+        def load(self):
+            return self._dp_array_length if self.full() else (self.wr_index - self.rd_index)
+
+        def peek(self):
+            self._dp_fifo_read_empty.insist(not self.empty())
+            return self[0]
+
+        def pop(self):
+            rv = self.peek()
+            self.rd_index += 1
+            return rv
+
+        def push(self, new_value):
+            self._dp_fifo_write_full.insist(not self.full())
+            self[self.wr_index - self.rd_index] = new_value
+            self.wr_index += 1
+
+    return FIFO
