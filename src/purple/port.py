@@ -57,14 +57,14 @@ def make_port_class(payload_type, base_class):
 
         def _dp_port_get_current(self):
             bound_method = getattr(self, '_dp_port_in_method', None)
-            if bound_method is None:
-                raise common.UnBoundPort(f'FOUND  Missing binding for input to {".".join(self.name)}')
+            common.UnBoundPort.insist(bound_method is not None,
+                f'FOUND  Missing binding for input to {".".join(self.name)}')
             return bound_method()
 
         def _dp_port_set_current(self, value):
             bound_method = getattr(self, '_dp_port_out_method', None)
-            if bound_method is None:
-                raise common.UnBoundPort(f'FOUND  Missing binding for output of {".".join(self.name)} {id(self)}')
+            common.UnBoundPort.insist(bound_method is not None,
+                f'FOUND  Missing binding for output of {".".join(self.name)} {id(self)}')
             return bound_method(value)
 
         @classmethod

@@ -61,8 +61,7 @@ class PurpleComponent:
         assert False, 'attempt to create a base class object'
 
     def guard(self, condition, *args):
-        if not condition:
-            raise GuardFailed(*args)
+        GuardFailed.insist(condition, *args)
 
     def print(self, *args, **kwargs):
         try:

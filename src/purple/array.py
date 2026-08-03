@@ -268,6 +268,7 @@ def Pipeline(array_cls):
         end_index: state.ModuloInteger[array_cls._dp_array_length] = 0
 
         def _dp_array_adjust_index(self, index):
+            # allows user to look at content in-order
             return self.end_index + index
 
         def __eq__(self, other):
@@ -298,6 +299,8 @@ def FIFO(array_cls, read_empty_is_error = False, write_full_is_error = False):
         _dp_fifo_write_full = WrFullFIFO if write_full_is_error else common.GuardFailed
 
         def _dp_array_adjust_index(self, index):
+            # allows user to peek at content in-order: index is from 0 to load-1
+            common.ReadUnDefined.insist(index < self.load(), 'attempt to access unoccupied part of FIFO')
             return (self.rd_index + index) % self._dp_array_length
 
         rd_index: state.ModuloInteger[2 * array_cls._dp_array_length] = 0
@@ -323,7 +326,7 @@ def FIFO(array_cls, read_empty_is_error = False, write_full_is_error = False):
 
         def push(self, new_value):
             self._dp_fifo_write_full.insist(not self.full())
-            self[self.wr_index - self.rd_index] = new_value
             self.wr_index += 1
+            self[self.wr_index - 1 - self.rd_index] = new_value
 
     return FIFO
