@@ -176,11 +176,11 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
             # search for array indices and convert to strings according to the class definition
             for hs in b.lhs, b.rhs:
                 assert isinstance(hs, metaclass.PurpleTypeProxy)
-                if any(n[0].isdigit() for n in hs.name):
+                if any(isinstance(n, int) for n in hs.name):
                     purple_cls = cls
                     new_name = []
                     for n in hs.name:
-                        fixed_name = purple_cls._dp_array_2attrname(int(n)) if n[0].isdigit() else n
+                        fixed_name = purple_cls._dp_array_2attrname(n) if isinstance(n, int) else n
                         new_name.append(fixed_name)
                         purple_cls = purple_cls._dp_state_types[fixed_name]
                     hs.name = tuple(new_name)

@@ -22,6 +22,7 @@ class UnionInitialValue:
     def __init__(self, preferrered_option_class, initial_val_for_preferred):
         self.preferred = preferrered_option_class
         self.initial_value = initial_val_for_preferred
+
     def __getitem__(self, i):
         return (self.preferred, self.initial_value)[i]
 

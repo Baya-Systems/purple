@@ -71,7 +71,7 @@ FIXME
     when you get a clocked-rule name wrong in Clock[rule_name] you get a very confusing error
     bug: can't have Tuple of Leaf
         this is temporarily hacked to work, but
-        coding style is bad - test for leaf in Tuple
+        coding style is bad - test for leaf in Tuple - use LeafMetaClass?
         no protection against transient BitVector being in-place modifiable (so non-undoable state change)
         so need frozen bitvectors (Leaf already plans for this)?
     where a leaf has an object type (like Tuple or BitVector or Modulo) it would be nice to be able
@@ -86,6 +86,8 @@ FIXME
                 # dict should support any of integer/enum/string keys, same keys for types and initial-values
     can I have a Tuple of Union?  test it
     change Generic so that it sets the class name to something useful unless it has been overridden
+    change Generic so that if the function does not return a class, return the most recently created purple subclass
+        and do this in all the src uses of Generic
     array-index variant allowing modification after elab
         only sets initial value
         question is: what are the limits on modifications?

@@ -72,46 +72,27 @@ class UnionMetaClass(PurpleComponentMetaClass):
 
 
 class PurpleTypeProxy:
-    ''' returned when a class declaration includes a reference to a declared sub-component (annotation)
+    ''' all sub-component (and other annotations) are added to the class being
+    declared as class variables, objects of this type
 
     for use in lazily-evaluated expressions eg bindings and rule lists
 
-    if we refer to a previously-declared sub-component, we need to be able to get a
-    similar reference for its internal sub-state
+    basically is just a hierarchical name
+    the purple-type (tree) corresponding to the name is stored in _dp_state_types
 
-    FIXME add a slice-as-final-name-element option, which is necessary if
-        the slice is imprecise eg x[-1] or x[3:] so can't be evaluated till
-        the type is known
-        if type is Array, we know its bounds
-        if type is HandlerArray, somehow get bounds from bind-partner
-    See below at the moment it just does str(index)
+    name can be a string or (for arrays) an int or a slice
     '''
-    def __init__(self, name, purple_type, hierarchical_name):
+    def __init__(self, name, hierarchical_name):
         self.name = (*hierarchical_name, name)
-        self.purple_type = purple_type
 
     def __getattr__(self, attr_name):
-        if self.purple_type is common.UniqueObject:
-            purple_type = common.UniqueObject
-        else:
-            purple_type = self.purple_type._dp_state_types.get(attr_name)
-        return PurpleTypeProxy(attr_name, purple_type, self.name)
+        return PurpleTypeProxy(attr_name, self.name)
 
     def __getitem__(self, index):
         'for binding eg ports within arrays'
-        # FIXME DOES THIS EVER GET CALLED NOW WHEN THERE IS A PURPLE TYPE
-        # OR ONLY FOR RAW NAMES?
-        # FIXME IF WE CAN FIND THE TYPE FROM raw-annotations WE CAN DO BETTER
-        if isinstance(index, slice):
-            assert False
-            return [self[i] for i in self.purple_type._dp_array_slice_range(index)]
-        elif self.purple_type is common.UniqueObject:
-            return getattr(self, str(index))
-        elif index >= 0 and index < self.purple_type._dp_array_length:
-            assert False
-            return getattr(self, self.purple_type._dp_array_2attrname(index))
+        if isinstance(index, (int, slice)):
+            return PurpleTypeProxy(index, self.name)
         else:
-            assert False
             raise IndexError
 
     def __lshift__(self, bind_target):
@@ -156,9 +137,9 @@ class Binding:
     def resolve(self, discovered_forename, purple_type):
         # need to convert to names for which we need to replace a type/function with a proxy
         if self.lhs is purple_type:
-            self.lhs = PurpleTypeProxy(discovered_forename, purple_type, ())
+            self.lhs = PurpleTypeProxy(discovered_forename, ())
         if inspect.isfunction(self.rhs):
-            self.rhs = PurpleTypeProxy(self.rhs.__name__, None, ())
+            self.rhs = PurpleTypeProxy(self.rhs.__name__, ())
 
     def __str__(self):
         lhs = '.'.join(self.lhs.name)
@@ -215,7 +196,7 @@ MetaClassStateStack = []
 
 class MetaClassState:
     '''
-    namespace_stack is used by AddToState to record inner class declarations
+    addtostate_classes is used by AddToState to record inner class declarations
     raw_bindings is used by Binding expressions to record themselves during __new__()
     and new_bindings because we need to replace "_" with the actual annotation name
 
@@ -335,7 +316,7 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
             if isinstance(riv, PurpleTypeProxy):
                 riv = unique_obj
             raw_initial_value[n] = riv
-            setattr(cls, n, PurpleTypeProxy(n, unique_obj, ()))
+            setattr(cls, n, PurpleTypeProxy(n, ()))
 
         # and for addtostate nested classes
         for ats_class in mc_state.addtostate_classes:
@@ -355,7 +336,7 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
 
             # but local things override them
             for n in ats_annotations:
-                cls_proxy = PurpleTypeProxy(name_in_cls, unique_obj, ())
+                cls_proxy = PurpleTypeProxy(name_in_cls, ())
                 setattr(cls, name_in_cls, cls_proxy)
                 setattr(ats_class, n, cls_proxy)
 
@@ -378,7 +359,7 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
 
         # now evaluate the class annotations properly
         def re_eval(annot_name, annot_str, annot_class):
-            annot_class._ = PurpleTypeProxy(annot_name, unique_obj, ())
+            annot_class._ = PurpleTypeProxy(annot_name, ())
             annot = eval_string_annotation(annot_str, annot_class)
 
             if isinstance(annot, annotationlib.ForwardRef):
