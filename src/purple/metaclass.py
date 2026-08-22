@@ -85,20 +85,15 @@ class PurpleTypeProxy:
         is responsible for converting the ints and slices into correctly-named single-bindings
     '''
     def __init__(self, name, hierarchical_name):
-        if name == '':
-            self.name = tuple(hierarchical_name)
-        else:
-            self.name = (*hierarchical_name, name)
+        self.name = tuple(hierarchical_name) if name == '' else (*hierarchical_name, name)
 
     def __getattr__(self, attr_name):
         return PurpleTypeProxy(attr_name, self.name)
 
     def __getitem__(self, index):
         'for binding eg ports within arrays'
-        if isinstance(index, (int, slice)):
-            return PurpleTypeProxy(index, self.name)
-        else:
-            raise IndexError
+        assert isinstance(index, (int, slice))
+        return PurpleTypeProxy(index, self.name)
 
     def __lshift__(self, bind_target):
         return Binding(self, bind_target, False)
@@ -461,3 +456,61 @@ class PurpleHierarchicalMetaClass(PurpleComponentMetaClass):
         'used to bind a port to a local port-handler function'
         Binding(cls, handler_name, False)
         return cls
+
+
+class HandlerArray:
+    '''decorator for converting a method into a array type
+
+    decorates a method of the form:  def a_method(self, index, etc):
+
+    getitem has the effect of inserting a new method into the class being
+        parsed, which method is bound to the index
+    this means that port binding can look for "function" and does not need to
+        know about HandlerArray
+
+    can be called
+        through a bound port
+        as declared self.a_method(index, etc)
+        as an array of methods self.a_method[i](etc)
+
+    has no array-length; expands as required
+    '''
+    def __init__(self, the_method):
+        self.the_method = the_method
+
+    class BoundToOwner:
+        # returned by __get__, a callable object bound to an object
+        def __init__(self, hdlr_array, owner, index):
+            self.hdlr_array = hdlr_array
+            self.owner = owner
+            self.index = index
+
+        def __getitem__(self, index):
+            # makes a callable object with an index
+            return type(self)(self.hdlr_array, self.owner, index)
+
+        def __call__(self, *a, **ka):
+            if self.index is common.UniqueObject:
+                return self.hdlr_array.the_method(self.owner, *a, **ka)
+            else:
+                return self.hdlr_array.the_method(self.owner, self.index, *a, **ka)
+
+    def __get__(self, owner, owner_cls):
+        # called (class or object) when calling the method directly (not through a port)
+        if owner is None:
+            return self.the_method
+        else:
+            return self.BoundToOwner(self, owner, common.UniqueObject)
+
+    def __getitem__(self, index):
+        # called during binding creation during class declaration
+        return PurpleTypeProxy(index, (self.the_method.__name__,))
+
+    def ensure_indexed_method(self, index, owner_cls):
+        assert isinstance(index, int)
+        def handler(owner, *a, index = index, hdlr_array = self, **ka):
+            return hdlr_array.the_method(owner, index, *a, **ka)
+        handler_name = f'_dp_arrayhandler_{self.the_method.__name__}_{index}'
+        handler.__name__ = handler_name
+        setattr(owner_cls, handler_name, handler)
+        return handler_name

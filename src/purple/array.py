@@ -212,56 +212,6 @@ def FromArrayIndex(converter_function):
     return ModifiedArrayIndex
 
 
-class HandlerArray:
-    '''decorator for converting a method into a array type
-
-    decorates a method of the form:  def a_method(self, index, etc):
-
-    getitem has the effect of inserting a new method into the class being
-        parsed, which method is bound to the index
-    this means that port binding can look for "function" and does not need to
-        know about HandlerArray
-
-    can be called
-        through a bound port
-        as declared self.a_method(index, etc)
-        as an array of methods self.a_method[i](etc)
-    '''
-    def __init__(self, the_method):
-        self.the_method = the_method
-        self.method_name = the_method.__name__
-
-    class BoundToOwner:
-        def __init__(self, hdlr_array, owner, index):
-            self.hdlr_array = hdlr_array
-            self.owner = owner
-            self.index = index
-
-        def __getitem__(self, index):
-            return type(self)(self.hdlr_array, self.owner, index)
-
-        def __call__(self, *a, **ka):
-            if self.index is common.UniqueObject:
-                return self.hdlr_array.the_method(self.owner, *a, **ka)
-            else:
-                return self.hdlr_array.the_method(self.owner, self.index, *a, **ka)
-
-    def __get__(self, owner, owner_cls):
-        if owner is None:
-            self.owner_cls = owner_cls
-            return self
-        else:
-            return self.BoundToOwner(self, owner, common.UniqueObject)
-
-    def __getitem__(self, index):
-        def handler(owner, *a, index = index, hdlr_array = self, **ka):
-            bound_handler = getattr(owner, hdlr_array.method_name)
-            return bound_handler(index, *a, **ka)
-        handler.__name__ = f'{self.method_name}_dp_arrayhandler_{index}'
-        setattr(self.owner_cls, handler.__name__, handler)
-        return handler
-
-
 @parameterise.Generic
 def Pipeline(array_cls):
     class PipelineArray(array_cls):

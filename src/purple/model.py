@@ -174,38 +174,46 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
             unclear how to deal with collisions/fan-in/fan-out/bases: ordered list and take last one?
             replace LHS?
             use +>> and +<< operators for fans?
-
-        what will happen with slices if we do them here?
-                example where LHS expands to 5 x len(subsub), easy just match LHS size
-                sub: (5 * SubComp)[ _[:].subsub[:] << handlers[:] ]
-
-                example where RHS needs to expands to 2 lots of 5
-                unknown size handler-array is always the bottom of the hierarchy and only one
-                suba: (2 * SubCompA)
-                subb: (10 * SubCompB)[ _[:].port << suba[:].handlers[:] ]
-
-        assume LHS is always well-defined (FIXME revisit later if necessary)
         '''
+        def get_array_length(purple_cls, allow_unknown, unknown_length):
+            array_length = getattr(purple_cls, '_dp_array_length', -1)
+            if array_length > 0:
+                return array_length
+            elif allow_unknown:
+                return unknown_length
+            else:
+                assert False, 'trying to array-bind a non-array or handler-array on right-hand-side'
+
         def make_subnames(purple_cls, name, allow_unknown, unknown_length = 1):
             # recursive expansion of slices, and conversion of int to string names
             car = name[0]
             cdr = name[1:]
 
             if isinstance(car, int):
-                assert 0 <= car < purple_cls._dp_array_length
+                assert 0 <= car < get_array_length(purple_cls, allow_unknown, car + 1)
                 new_cars = [purple_cls._dp_array_2attrname(car)]
             elif isinstance(car, slice):
-                indices = range(purple_cls._dp_array_length)[car]
+                indices = range(get_array_length(purple_cls, allow_unknown, unknown_length))[car]
                 new_cars = [purple_cls._dp_array_2attrname(c) for c in indices]
             else:
                 new_cars = [car]
 
             if cdr:
-                next_purple_cls = purple_cls._dp_state_types[new_cars[0]]
-                lower_names = make_subnames(next_purple_cls, cdr, allow_unknown, unknown_length)
-                return [(c, *n) for c in new_cars for n in lower_names]
+                # all elements of an array have the same type so take the first one
+                next_purple_cls = purple_cls._dp_state_types.get(new_cars[0], None)
+                if next_purple_cls is None:
+                    # binding must be referring to a HandlerArray, which can have an index or a slice
+                    ha = vars(purple_cls)[new_cars[0]]
+                    assert isinstance(ha, metaclass.HandlerArray)
+                    assert len(cdr) == 1, 'cannot have hierarchy below a handler-arrray'
+                    array_length = get_array_length(type(ha), allow_unknown, unknown_length)
+                    # force handler methods to exist
+                    return [(ha.ensure_indexed_method(i, purple_cls),) for i in range(array_length)[cdr[0]]]
+                else:
+                    lower_names = make_subnames(next_purple_cls, cdr, allow_unknown, unknown_length)
+                    return [(c, *n) for c in new_cars for n in lower_names]
             else:
-                return [new_cars]
+                return [(c,) for c in new_cars]
 
         # search for array indices and convert to strings according to the class definition
         # and blow up slices to separate single-bindings

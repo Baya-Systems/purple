@@ -88,11 +88,8 @@ cli.Test(TopB())(the_test)
 
 
 class TopC(cli.Test.Top):
-    'iteration-based binding (not so good with py-3.14)'
-    x: 4 * Sub2
-    for src,dst in zip(range(3), range(1,4)):
-        class Binder(AddToState(src = src, dst = dst)):
-            bind: TopC.x[src].p_out >> TopC.x[dst].p_in
+    'array-binding'
+    x: 4 * Sub2[ _[:3].p_out >> _[1:].p_in ]
 
 cli.Test(TopC())(the_test)
 
@@ -108,11 +105,8 @@ class Second(Model):
         self.a = (self.a + v) % 5
 
 class First(Model):
-    chain: 4 * Second
+    chain: 4 * Second[ _[:3].p_out >> _[1:].p_in ]
     p_out: Port[Integer[5]] >> chain[0].p_in
-    for src,dst in zip(range(3), range(1,4)):
-        class Binder(AddToState(src = src, dst = dst)):
-            bind: First.chain[src].p_out >> First.chain[dst].p_in
 
 
 class Zeroth(cli.Test.Top):

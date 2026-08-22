@@ -11,18 +11,6 @@ lint is not fully clean and probably cannot be, but valuable
 FIXME
     with 3.13 elaboration is not deterministic; fix this in 3.14
         problem seems to be the order of rules, which can affect randomised simulators
-    ability to bind arrays to arrays
-        v important for py-3.14
-        class X(Model):
-            a: (10 * Port[Y]) << HandlerArray(10, my_method)
-            b: (10 * Port[Y)) << another_port_array
-            c: (7 * Port[Y]) << another_array[1:8]
-            c: (7 * Port[Y]) << subcomponent_array[1:8].port
-                # last one looks non-python but should work because Proxy is needed
-            bind1: subcomponent_array[1:8].port << other.port[0:7] + [first]
-            bind2: subcomponent_array[1:8].port << [first] + other.port[0:7]
-                # do we store in binding RHS/LHS names?
-                # if not, need to know the array lengths
     state variable type for clocked sim integer where two processes change the value
         eg num_outstanding: DualProcessCounter[limit]
         def clocked(self):
@@ -170,15 +158,12 @@ could this go full-bs?
             can you pipeline, so multiple instances of the same rule
                 read all at the start?
 
-could add a VCD generation, but probably only useful for clocked and only for state elements
-        that are some kind of finite-integer or boolean.
+could add a VCD generation, but possibly only useful for clocked and only for state elements
+        that are some kind of finite-integer or boolean (or constructed from them).
     could add an optional VCD method to leaf classes that by default raises an error
     would also need to support functions that get the current value of something, in case
         VCD needs to include the output of combinatorial logic.  these will return Record or
         int or bool and will not always have a known Purple type
-
-are greek characters just a distraction?
-    πψτηον
 '''
 
 from .__about__ import __version__
@@ -199,4 +184,4 @@ from .parameterise import *
 from .interface import *
 from .simulator import *
 from .verif import *
-from .metaclass import AddToState
+from .metaclass import AddToState, HandlerArray

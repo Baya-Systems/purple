@@ -80,6 +80,7 @@ def make_port_class(payload_type, base_class):
             self = instantiating_component._dp_raw_getattr(name)
 
             # iterate from top component towards this port through the hierarchy
+            # searching for bindings that refer to it (this port)
             component = top_component
             port_name = self.name[1:]
             while component is not self:

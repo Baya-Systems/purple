@@ -5,92 +5,6 @@ Purple Tests
 ======================
 
 Initial test for ports
-
-FIXME
-    need a better syntax for binding arrays of ports
-        want it inside the class --getitem-- if possible
-            difficulty, see below
-
-    handler with an index parameter for array-of-ports
-
-    need a better syntax for binding ports of array elements
-
-class Broken:
-    y: 5 * Agent
-    x: Fabric[*[
-        (dst_port << src_agent.port_out)
-        for dst_port,src_agent in zip(port_in, y)
-    ]]
-
-y is a proxy, non-ambiguous because there's an annotation.  it has a type (Array[Agent])
-    can iterate over y
-port_in is remembered an ambiguous reference, returned as a proxy with no type (parser has not reached Fabric annotation yet)
-    cannot iterate over port_in because we don't know its index-to-attrname or its length or the types of its members
-    could make a 'very-needs-name' binding (missing first name and index conversion)
-    then when the annotation happens we can insert the first name and replace all int indices with attr names
-would not work if we wanted to bind two things within x in this way
-    eg loopbacks is a valid use case
-    because it would not know when to stop iterating
-
-class Maybe:
-    y: 5 * Agent
-    x: Fabric[
-        ((dst_port << src_agent.port_out) for dst_port,src_agent in zip(port_in, y))
-    ]
-
-this has passed a generator expression to class --getitem--
-the generator is not evaluated at this time
-but port_in and y will be evaluated and checked for iterability
-that's probably OK because proxy has --getitem--, it won't actually be called
-when the annotation occurs, we have to modify the port_in proxy in-place (including giving it a type)
-    then we can explode this generator to a bunch of real bindings
-
-implication of this
-    proxies rather than bindings get resolved
-    seems easy enough
-    better, because now we can put unresolved proxies on either side of the binding (or both sides)
-        although this means the namespace lookup has to be the source of needs_name
-        will be better to use an explicit unary-op to indicate needs-forename, worth 1 character for clarity
-        no this sucks because can't refer to a port array itself
-        then we can think about using _. to resolve global variable conflicts
-        seems OK that a variable named _ is inaccessible although it might be used as a loop counter or temporary
-        in which case things will probably break
-        for now we don't have a strong demand for global variable conflict resolution; only rule/handler names
-        which ought to be under declarer control
-
-class ThisWillNotWork:
-    y: 5 * Agent
-    x: (5 * Port[XYZ])[
-        ~[4] << something,
-        ((dst_port << src.port_out) for dst_port,src in zip(~, y)),
-    ]
-
-class ThisCould:
-    y: 5 * Agent
-    x: (5 * Port[XYZ])[
-        _[4] << something,
-        ((dst_port << src.port_out) for dst_port,src in zip(_, y)),
-    ]
-
-class Loopback:
-    y: 5 * Agent
-    x: Fabric[
-        ((dst_port << src_port) for dst_port,src_port in zip(~port_out, ~port_in))
-    ]
-
-class MoreExotic:
-    y: 5 * Agent
-    x: Fabric[
-        ((dst_port << src_agent.sub.port_out) for dst_port,src_agent in zip(~port_in, y))
-    ]
-
-class Lambda:
-    y: 5 * Agent
-    x: Fabric[
-        ((src_port >> handler) for src_port,handler in zip(~port_out, IndexedHandler(mymethod)))
-    ]
-    def mymethod(self, i, value):
-        blah
 '''
 
 from purple import Model, Record, Integer, Port, FIFO_Input_Port, ArrayIndex, HandlerArray, AddToState
@@ -267,11 +181,7 @@ class Fabric(Model):
 
     # target interface
     targets_from_bridge: num_targets * Port[Request]
-
-    targets_to_bridge: num_targets * Port[Response]
-    for i in range(num_targets):
-        class BindHandlers(AddToState(i = i)):
-            handle_rsp: Fabric.targets_to_bridge[i] >> Fabric.resp_to_bridge[i]
+    targets_to_bridge: (num_targets * Port[Response])[ _[:] >> resp_to_bridge[:] ]
 
     def req_from_initiator(self, req):
         print('FOUND REQ FAB', req.address)
@@ -289,15 +199,12 @@ class Fabric(Model):
         assert index == resp.source
         self.bridge_from_targets = resp
 
-
 print('top-level')
 class MuchBinding(cli.Test.Top):
     initiator: Initiator
     ibridge: IBridge
     targets: num_targets * Target
 
-    def st_binder(targets, _, num_targets = num_targets):
-        return [_.targets_from_bridge[i] >> targets[i].req_port for i in range(num_targets)]
     fabric: Fabric[
         _.initiator_to_bridge << initiator.req_port,
         _.bridge_from_initiator >> ibridge.req_port,
@@ -305,12 +212,9 @@ class MuchBinding(cli.Test.Top):
         _.bridge_from_targets >> ibridge.resp_transport,
         _.bridge_to_initiator << ibridge.resp_port,
         _.initiator_from_bridge >> initiator.resp_port,
-        st_binder(targets, _),
+        _.targets_from_bridge[:] >> targets[:].req_port,
+        _.targets_to_bridge[:] << targets[:].resp_port,
     ]
-
-    for i in range(num_targets):
-        class Dst_to_Target(AddToState(i = i)):
-            rsp: MuchBinding.fabric.targets_to_bridge[i] << MuchBinding.targets[i].resp_port
 
 
 @cli.Test(MuchBinding())
