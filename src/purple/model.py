@@ -160,6 +160,9 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
     @classmethod
     def _dp_add_bindings_from_base(cls, base):
         ''' called on declaration of a Model subclass, once for every base
+
+        FIXME this does not allow for array size changes from base to subclass
+            does it matter - what is the use case?
         '''
         cls._dp_bindings.extend(base._dp_bindings)
 
@@ -171,21 +174,65 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
             unclear how to deal with collisions/fan-in/fan-out/bases: ordered list and take last one?
             replace LHS?
             use +>> and +<< operators for fans?
-        '''
-        for b in raw_cls_bindings:
-            # search for array indices and convert to strings according to the class definition
-            for hs in b.lhs, b.rhs:
-                assert isinstance(hs, metaclass.PurpleTypeProxy)
-                if any(isinstance(n, int) for n in hs.name):
-                    purple_cls = cls
-                    new_name = []
-                    for n in hs.name:
-                        fixed_name = purple_cls._dp_array_2attrname(n) if isinstance(n, int) else n
-                        new_name.append(fixed_name)
-                        purple_cls = purple_cls._dp_state_types[fixed_name]
-                    hs.name = tuple(new_name)
 
-            cls._dp_bindings.append(b)
+        what will happen with slices if we do them here?
+                example where LHS expands to 5 x len(subsub), easy just match LHS size
+                sub: (5 * SubComp)[ _[:].subsub[:] << handlers[:] ]
+
+                example where RHS needs to expands to 2 lots of 5
+                unknown size handler-array is always the bottom of the hierarchy and only one
+                suba: (2 * SubCompA)
+                subb: (10 * SubCompB)[ _[:].port << suba[:].handlers[:] ]
+
+        assume LHS is always well-defined (FIXME revisit later if necessary)
+        '''
+        def make_subnames(purple_cls, name, allow_unknown, unknown_length = 1):
+            # recursive expansion of slices, and conversion of int to string names
+            car = name[0]
+            cdr = name[1:]
+
+            if isinstance(car, int):
+                assert 0 <= car < purple_cls._dp_array_length
+                new_cars = [purple_cls._dp_array_2attrname(car)]
+            elif isinstance(car, slice):
+                indices = range(purple_cls._dp_array_length)[car]
+                new_cars = [purple_cls._dp_array_2attrname(c) for c in indices]
+            else:
+                new_cars = [car]
+
+            if cdr:
+                next_purple_cls = purple_cls._dp_state_types[new_cars[0]]
+                lower_names = make_subnames(next_purple_cls, cdr, allow_unknown, unknown_length)
+                return [(c, *n) for c in new_cars for n in lower_names]
+            else:
+                return [new_cars]
+
+        # search for array indices and convert to strings according to the class definition
+        # and blow up slices to separate single-bindings
+        for b in raw_cls_bindings:
+            # shortcut for non-array cases
+            if not any(isinstance(n, (int, slice)) for n in (b.lhs.name + b.rhs.name)):
+                cls._dp_bindings.append(b)
+                continue
+
+            # replace array indices with strings and expand array slices to individual bindings
+            # LHS is always known-length
+            # final slice on RHS might be a handler-array so work out the length it needs to match LHS
+            lhs_names = make_subnames(cls, b.lhs.name, False)
+            rhs_names = make_subnames(cls, b.rhs.name, True)
+            len_lhs_names = len(lhs_names)
+            len_rhs_names = len(rhs_names)
+            if len_lhs_names != len_rhs_names:
+                unknown_len = len_lhs_names // len_rhs_names
+                assert unknown_len * len_rhs_names == len_lhs_names, 'bind to handler-array has bad length'
+                rhs_names = make_subnames(cls, b.rhs.name, True, unknown_len)
+            assert len(rhs_names) == len_lhs_names
+
+            for lhs,rhs in zip(lhs_names, rhs_names):
+                lhs_proxy = metaclass.PurpleTypeProxy('', lhs)
+                rhs_proxy = metaclass.PurpleTypeProxy('', rhs)
+                b = metaclass.Binding(lhs_proxy, rhs_proxy, b.left2right, add_to_mcs = False)
+                cls._dp_bindings.append(b)
 
     @classmethod
     def _dp_add_clocks_from_base(cls, base):

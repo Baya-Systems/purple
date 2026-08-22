@@ -80,10 +80,15 @@ class PurpleTypeProxy:
     basically is just a hierarchical name
     the purple-type (tree) corresponding to the name is stored in _dp_state_types
 
-    name can be a string or (for arrays) an int or a slice
+    name elements can be strings, or for arrays ints or slices
+    Model._dp_add_bindings_from_annotations()
+        is responsible for converting the ints and slices into correctly-named single-bindings
     '''
     def __init__(self, name, hierarchical_name):
-        self.name = (*hierarchical_name, name)
+        if name == '':
+            self.name = tuple(hierarchical_name)
+        else:
+            self.name = (*hierarchical_name, name)
 
     def __getattr__(self, attr_name):
         return PurpleTypeProxy(attr_name, self.name)
@@ -126,13 +131,15 @@ class Binding:
             y: myPort
             y >> other_handler_name
     '''
-    def __init__(self, lhs, rhs, left2right):
-        if not MetaClassState.peek().enable_binding_capture:
-            raise NameError('binding capture not enabled')
+    def __init__(self, lhs, rhs, left2right, add_to_mcs = True):
         self.lhs = lhs # always a proxy object
         self.rhs = rhs # may be a proxy object or a function object (local method)
         self.left2right = left2right
-        MetaClassState.add_binding(self)
+
+        if add_to_mcs:
+            if not MetaClassState.peek().enable_binding_capture:
+                raise NameError('binding capture not enabled')
+            MetaClassState.add_binding(self)
 
     def resolve(self, discovered_forename, purple_type):
         # need to convert to names for which we need to replace a type/function with a proxy
@@ -142,8 +149,8 @@ class Binding:
             self.rhs = PurpleTypeProxy(self.rhs.__name__, ())
 
     def __str__(self):
-        lhs = '.'.join(self.lhs.name)
-        rhs = '.'.join([self.rhs.__name__] if inspect.isfunction(self.rhs) else self.rhs.name)
+        lhs = '.'.join(str(n) for n in self.lhs.name)
+        rhs = '.'.join([self.rhs.__name__] if inspect.isfunction(self.rhs) else (str(n) for n in self.rhs.name))
         return f'{lhs.rjust(30)} {">>" if self.left2right else "<<"} {rhs}'
 
 
