@@ -3,20 +3,15 @@
 # ---------------------------
 #
 # Purple requires a very up-to-date python.
-# Development uses python-3.12.
+# Development uses python-3.14.
 #
-# Not too up-to-date!
-# Probably broken in 3.14 because of changes in type annotation parsing
-#
-# Default development machine is the off-the-shelf python:3.12 Docker image.
+# Default development machine is the off-the-shelf python:3.14 Docker image.
 #
 # For testing, Makefile will create a virtual python environment (venv) and
 # install the under-test version of Purple in it.
 # This is not necessary when using a Docker image, but allows clean testing
-# on any python-3.12 machine.
+# on any python-3.14 machine.
 #
-
-# changed for porting to Python-3.14
 
 echo ${PURPLE:=$HOME/Code/purple}
 echo ${DOCKER_IMAGE:=python:3.14}

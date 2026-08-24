@@ -53,11 +53,16 @@ for example *attrs*, but probably less aggressively than Purple.
 Implementation is complete enough for many projects.
 Tests exist for the vast majority of implemented features.
 
-The whole Purple project is threatened by the change in type hinting support scheduled for Python 3.14.
-This change will certainly break the current implementation of Purple.
-It may or may not be possible to upgrade Purple to be compatible with Python 3.14 but it is unlikely
-that the use model (syntax) will be preserved exactly, or that Purple will be able to be compatible with
-both pre 3.14 and post 3.14 versions of Python.
+The whole Purple project is deeply affected by the change in type hinting support scheduled for Python 3.14.
+There are now 2 versions of Purple, for pre-3.14 and post-3.14.
+They are mutually incompatible in some ways, especially around the declaration of port bindings, and
+projects using Purple will have to choose which one to use.
+
+* pre-3.14 is unlikely to be supported in future
+* post-3.14 will continue to change as lazy evaluation of type hinting continues to mature in the C-python implementation.
+  It is not completely clear whether the current 3.14 C-python implementation is a bug-free implementation of
+  the lazy-type-hint-evaluation language specification, or whether Purple depends on implementation details and is
+  therefore incompatible with other implementations of python
 
 Main weaknesses of the current version are:
 

@@ -9,6 +9,8 @@ lint is not fully clean and probably cannot be, but valuable
     ruff check tst --ignore F821 --ignore F811 --ignore E722
 
 FIXME
+    re-write all doc files for 3.14 and merge to main
+
     with 3.13 elaboration is not deterministic; fix this in 3.14
         problem seems to be the order of rules, which can affect randomised simulators
     state variable type for clocked sim integer where two processes change the value
@@ -27,7 +29,7 @@ FIXME
             and store state changes as type-specific subclass objects (when needed) in LeafStateChange
             then in Clock.event() we would merge commutative ops
             which means finding them first across multiple invocation objects
-    add a Dictionary leaf type basically the same as Tuple
+    add a frozen-Dictionary leaf type basically the same as Tuple
     declaring a state type as Tuple not Tuple[XYZ] fails silently
     start rules
         can there be more than one?  can they have parameters?
