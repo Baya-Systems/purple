@@ -24,6 +24,7 @@ Summary of Purple Concepts
     * *Leaves*
     * lists of *Rules*
     * *Clocks*
+    * *Bindings*
 
   * each state element within a model has a name and a type, and the model attribute can only
     be set to values matching that type
@@ -67,7 +68,7 @@ Summary of Purple Concepts
   * a union class comprises a set of *option classes* which are all Purple record or leaf classes
   * a union state element may take a value that matches any one of its option classes
 
-* *Port* and *Interface*
+* *Port* and *Interface* and *Binding*
 
   * a port is a generic Purple *Model*
   * it has a type, which can be a *Record* or *Union* or *Leaf*
@@ -92,7 +93,7 @@ Summary of Purple Concepts
   * an *Interface* is a Purple *Model* designed to be a base class for a group of ports commonly
     instantiated together with common parameters and bindings (for example the 5 channels of the AXI protocol)
 
-* *Rule*
+* *Rule* and *Guard*
 
   * a rule is a method of a *Model* class which describes a way that the model's internal state can change
   * model state can only be modified within a rule execution (invocation)
@@ -105,6 +106,11 @@ Summary of Purple Concepts
   * when a clocked rule has parameters, only one set of parameters is used in each clock cycle
   * a rule may only be invocable for a subset of the model state.
     If required, the rule embeds calculations of whether or not it is invocable.
+  * a *Guard* is a test which determines whether a rule can run or not.
+    Guards can be placed anywhere within the code of a rule, or in a function called from the rule, or
+    a function indirectly called eg the handler of a bound port.
+    If a guard fails, the rule cannot run and the system state cannot be changed by trying to invoke
+    the rule.
 
 * *Clock*
 
@@ -130,8 +136,7 @@ Summary of Purple Concepts
     within its internal hierarchy.
     All leaf state elements are immutable and typically their values are normal Python
     objects (int, enum, bool, etc).
-    However in some cases a leaf value can contain Purple *Record* objects; for example the
-    *Tuple* type.
+    However in some cases a leaf value can contain Purple *Record* objects; for example the *Tuple* type.
     In such cases the record type is replaced by a *Frozen* record type, to prevent the
     leaf from becoming mutable
 
@@ -196,8 +201,9 @@ Comments within the code highlight items of interest.
 
 ..  code::  python
 
-    # a normal Python enum
+    # normal Python enums
     BombState = enum.Enum('BombState', 'Ready Counting Exploded Safe')
+    BombEvent = enum.Enum('BombEvent', 'Prime CutBlue CutRed Hesitate')
 
     class ClockedBomb(Model):
         # every Bomb has a state variable called 'state' which is an enum and is initialised to 'Ready'

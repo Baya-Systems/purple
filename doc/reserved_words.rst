@@ -32,6 +32,7 @@ names of state elements or rule methods or handler methods, etc..
   * ``guard``
   * ``print``
   * ``guards_limited_to_code_block``
+  * ``update_dp_initial_value_from_base``
 
 * for *Record* subclasses
 
@@ -47,5 +48,7 @@ names of state elements or rule methods or handler methods, etc..
   * ``guard``
   * ``print``
   * ``guards_limited_to_code_block``
+  * ``update_dp_initial_value_from_base``
+  * ``make_class``
 
 * all reserved words from normal Python

@@ -9,8 +9,10 @@ lint is not fully clean and probably cannot be, but valuable
     ruff check tst --ignore F821 --ignore F811 --ignore E722
 
 FIXME
-    re-write all doc files for 3.14 and merge to main
-
+    still have an occasional bug in rob_implementation test
+        list index out of range
+        File "/home/purple/tst_verif/rob_implementation_test.py", line 399, in requester_clk
+        txn_at_completer = txns_at_completer[0][1]
     with 3.13 elaboration is not deterministic; fix this in 3.14
         problem seems to be the order of rules, which can affect randomised simulators
     state variable type for clocked sim integer where two processes change the value

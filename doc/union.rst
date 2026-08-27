@@ -5,7 +5,7 @@
 Unions
 ------------------
 
-There are two motivations for *Unions*:
+There are three motivations for *Unions*:
 
 * simple way to create a more complex *Leaf* class
 
@@ -19,24 +19,34 @@ There are two motivations for *Unions*:
 
         Opcode = enum.Enum('Opcode', 'Rd Wr')
 
-        class Rd_Request:
+        class Rd_Request(Record):
             addr: Integer[...]
 
-        class Wr_Request:
+        class Wr_Request(Record):
             addr: Integer[...]
             data: Integer[...]
 
-        class Request:
+        class Request(Record):
             opcode: Enumeration[Opcode]
             request: Rd_Request | Wr_Request
+
+* classes with built-in validity
+
+  ..    code::  python
+
+        class MyComponent(Model):
+            # default when the Python "None" object is used is None
+            req_being_processed: Request | None
+            previous_req: (Constant[-1] | Request) = -1
 
 A union can contain a mixture of *Record* and *Leaf* types.
 This may have been a bad choice for Purple, as it adds significantly to complexity and testing.
 
 Unions are created using the OR (``|``) operator on record, leaf or other union classes.
+Making a union with the python "None" object is also possible; this is syntactic sugar for ``Constant[None]``.
 
 The order of classes used to create the union determines the preferred option class and hence the
-default initial value.
+default initial value (again, "None" is a special case; it is put at the start of the order).
 Unions with different option class order but the same option classes evaluate equal to each other.
 
 Objects whose class is a union class should never exist; the object, whether part of static model
@@ -55,7 +65,7 @@ to determine if ``my_request`` is a read or a write.
 This would not be an intuitive model of anything useful.
 The "correct" alternative would be ``if my_request.opcode is Opcode.Rd:``
 
-A union cannot be an option class of another unions; this is equivalent to a union with the combined
+A union cannot be an option class of another union; this is equivalent to a union with the combined
 option classes of both.
 
 Unions can have *Record* option classes containing further unions.
