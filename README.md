@@ -54,10 +54,13 @@ Implementation is complete enough for many projects.
 Tests exist for the vast majority of implemented features.
 
 The whole Purple project is threatened by the change in type hinting support scheduled for Python 3.14.
-This change will certainly break the current implementation of Purple.
-It may or may not be possible to upgrade Purple to be compatible with Python 3.14 but it is unlikely
-that the use model (syntax) will be preserved exactly, or that Purple will be able to be compatible with
-both pre 3.14 and post 3.14 versions of Python.
+This change breaks the 3.13 implementation of Purple.
+Purple is modified to be compatible with Python 3.14 but it is not backwards-compatible:
+models developed for 3.13 will usually not work with the 3.14 implementation of Purple.
+
+The 3.13 and 3.14 versions of Purple are both available in this repository on different branches.
+Development is focussed on the 3.14 version.
+The 3.13 version is unlikely to advance or be maintained in future.
 
 Main weaknesses of the current version are:
 
