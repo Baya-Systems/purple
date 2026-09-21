@@ -337,3 +337,58 @@ class LocalGuards_ContextManager:
             self.current_inv.apply_state()
             self.current_inv.printout = self.printout_on_enter
             return True
+
+
+class LeafStateChange:
+    def __init__(self, component, leaf_name, value_after):
+        self.component = component
+        self.top_component = component._dp_top_component
+        self.leaf_name = leaf_name
+        self.full_name_hash_a = hash((component.name, leaf_name))
+        self.full_name_hash_b = hash((leaf_name, component.name))
+
+        self.value_before = component._dp_raw_getattr(leaf_name)
+        self.value_after = value_after
+
+    def hash_a_leaf(self, v):
+        # leaf (or static-record in case of Union changing type) can define a
+        # hash function separate from python's __hash__() so that it doesn't need
+        # to follow the same rules
+        hash_function = getattr(v, '_dp_hash_function', hash)
+        try:
+            hash_value = hash_function(v)
+        except TypeError:
+            print('Attempt to set leaf to unhashable type', type(v))
+            print('    leaf name:', '.'.join(self.component.name) + '.' + self.leaf_name)
+            print('    value:', v)
+            raise
+
+        # use two different name hashes; python's internal hash() isn't ideal
+        return self.full_name_hash_a ^ self.full_name_hash_b * hash_value
+
+    def update_model_state_hash(self, v_current, v_to):
+        msh = self.top_component._dp_model_state_hash - self.hash_a_leaf(v_current) + self.hash_a_leaf(v_to)
+        self.top_component._dp_raw_setattr('_dp_model_state_hash', msh)
+
+    @staticmethod
+    def require_equal(a, b):
+        # some leaf state types have a custom __eq__ and don't allow equality testing for Undef
+        try:
+            assert a == b, f'{a} {b}'
+        except ReadUnDefined:
+            assert a._dp_eq__(b)
+
+    def make_change(self, v_from, v_to, v_check):
+        # leaf value changes from current_value to v_to
+        v_current = self.component._dp_raw_getattr(self.leaf_name)
+        if v_check is UniqueObject:
+            v_check = v_from
+        self.require_equal(v_check, v_current)
+        self.update_model_state_hash(v_current, v_to)
+        self.component._dp_raw_setattr(self.leaf_name, v_to)
+
+    def apply(self, check_value = UniqueObject):
+        self.make_change(self.value_before, self.value_after, check_value)
+
+    def revert(self, check_value = UniqueObject):
+        self.make_change(self.value_after, self.value_before, check_value)

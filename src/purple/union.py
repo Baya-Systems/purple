@@ -263,7 +263,8 @@ class Union(common.PurpleComponent, metaclass = metaclass.UnionMetaClass):
                 # attribute changing, and current is a record, so current must be de-selected
                 leaf_updates += current._dp_instance_setattr_leaf_changes(owner, name, current, common.UnSelected)
             if inst is not common.UniqueObject:
-                leaf_updates += ((owner, name, inst),)
+                # not a leaf, so we need to switch the owner attribute to point at the new inst
+                leaf_updates += (common.LeafStateChange(owner, name, inst),)
 
         return leaf_updates
 

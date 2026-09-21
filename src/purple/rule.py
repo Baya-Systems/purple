@@ -34,61 +34,6 @@ class Rule:
         return invocation
 
 
-class LeafStateChange:
-    def __init__(self, component, leaf_name, value_before, value_after):
-        self.component = component
-        self.top_component = component._dp_top_component
-        self.leaf_name = leaf_name
-        self.full_name_hash_a = hash((component.name, leaf_name))
-        self.full_name_hash_b = hash((leaf_name, component.name))
-
-        self.value_before = value_before
-        self.value_after = value_after
-
-    def hash_a_leaf(self, v):
-        # leaf (or static-record in case of Union changing type) can define a
-        # hash function separate from python's __hash__() so that it doesn't need
-        # to follow the same rules
-        hash_function = getattr(v, '_dp_hash_function', hash)
-        try:
-            hash_value = hash_function(v)
-        except TypeError:
-            print('Attempt to set leaf to unhashable type', type(v))
-            print('    leaf name:', '.'.join(self.component.name) + '.' + self.leaf_name)
-            print('    value:', v)
-            raise
-
-        # use two different name hashes; python's internal hash() isn't ideal
-        return self.full_name_hash_a ^ self.full_name_hash_b * hash_value
-
-    def update_model_state_hash(self, v_current, v_to):
-        msh = self.top_component._dp_model_state_hash - self.hash_a_leaf(v_current) + self.hash_a_leaf(v_to)
-        self.top_component._dp_raw_setattr('_dp_model_state_hash', msh)
-
-    @staticmethod
-    def require_equal(a, b):
-        # some leaf state types have a custom __eq__ and don't allow equality testing for Undef
-        try:
-            assert a == b, f'{a} {b}'
-        except common.ReadUnDefined:
-            assert a._dp_eq__(b)
-
-    def make_change(self, v_from, v_to, v_check):
-        # leaf value changes from current_value to v_to
-        v_current = self.component._dp_raw_getattr(self.leaf_name)
-        if v_check is common.UniqueObject:
-            v_check = v_from
-        self.require_equal(v_check, v_current)
-        self.update_model_state_hash(v_current, v_to)
-        self.component._dp_raw_setattr(self.leaf_name, v_to)
-
-    def apply(self, check_value = common.UniqueObject):
-        self.make_change(self.value_before, self.value_after, check_value)
-
-    def revert(self, check_value = common.UniqueObject):
-        self.make_change(self.value_after, self.value_before, check_value)
-
-
 class Invocation:
     '''Stores data about a Rule invocation: success/failure and the system state before and after
     '''
@@ -119,30 +64,13 @@ class Invocation:
         self.top_component._dp_raw_setattr('_dp_current_invocation', None)
         return True
 
-    def current_leaf_value(self, component, leaf_attr_name):
-        # this method is not required if changes are always immediately visible in-rule
-        # which is the case today
-        update_key = component.name, leaf_attr_name
-        latest_update = self.state_changes.get(update_key, None)
-        if latest_update is None:
-            return getattr(component, leaf_attr_name)
-        else:
-            # this can be modified to take the original or the latest
-            # depending on immediate-update-visibility
-            return latest_update.value_after
-
-    def leaf_state_change(self, component, leaf_attr_name, leaf_new_value):
-        update_key = component.name, leaf_attr_name
+    def leaf_state_change(self, change):
+        update_key = change.component.name, change.leaf_name
         repeated_update = self.state_changes.get(update_key, None)
-        if repeated_update is None:
-            original_value = component._dp_raw_getattr(leaf_attr_name)
-            check_value = original_value
-        else:
-            original_value = repeated_update.value_before
-            check_value = repeated_update.value_after
-        change = LeafStateChange(component, leaf_attr_name, original_value, leaf_new_value)
+        change.apply()
+        if repeated_update is not None:
+            change.value_before = repeated_update.value_before
         self.state_changes[update_key] = change
-        change.apply(check_value)
 
     def revert_state(self):
         for change in self.state_changes.values():

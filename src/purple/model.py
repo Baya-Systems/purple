@@ -110,12 +110,8 @@ class Model(common.PurpleComponent, metaclass = metaclass.PurpleHierarchicalMeta
 
     def _dp_announce_leaf_changes(self, leaf_updates):
         top = self._dp_top_component
-        for o,n,v in leaf_updates:
-            top._dp_current_invocation.leaf_state_change(o, n, v)
-
-    def _dp_get_current_leaf_value(self, leaf_name):
-        invoc = self._dp_top_component._dp_current_invocation
-        return invoc.current_leaf_value(self, leaf_name)
+        for lsc in leaf_updates:
+            top._dp_current_invocation.leaf_state_change(lsc)
 
     @classmethod
     def _dp_add_rules_from_base(cls, base, typeproxy_class):

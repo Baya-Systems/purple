@@ -25,12 +25,28 @@ FIXME
             num_outstanding -= 1
         only possible for commutative operations eg not for (+1) and (*2)
         possibly things like Tuple[] also have commutative operations eg append an item and modify another item
-        no idea how to achieve this
+        idea how to achieve this
             only needed for clocked-simulator (but should work for atomic-rule)
             maybe we need to define a CommutativeOperation base class
             and store state changes as type-specific subclass objects (when needed) in LeafStateChange
             then in Clock.event() we would merge commutative ops
             which means finding them first across multiple invocation objects
+
+        Model.setattr() calls leaf-changes, which calls it on each element hierarchically
+            which calls check-and-cast when it reaches a leaf, which returns a tuple of tuple (owner/name/value)
+            which is summed by Model into one full tuple
+        then Model calls announce-changes, which sends all the changes to the current invocation
+        invocation stores it, does some hash operations, detects repeated changes to same leaf
+            but it doesn't remember the separate changes, only the final value
+            there's also some checking of original value, which might be redundant?  important for
+                preventing replay of rule from the wrong state (can hash handle this well enough?)
+            invocation has a leaf-state-change class for its own storage (only need one such class)
+
+        let's try to move the leaf-state-change class to common.py.  done and passing
+        now a leaf class (Tuple or a new Counter) can modify this leaf-state-change class
+            for itself alone
+        invocation is going to store one leaf-state-change per leaf as now
+
     add a frozen-Dictionary leaf type basically the same as Tuple
     declaring a state type as Tuple not Tuple[XYZ] fails silently
     start rules
