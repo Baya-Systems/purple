@@ -47,6 +47,7 @@ UnResolvableType = PurpleException.subclass('UnResolvableType')
 UnBoundPort = PurpleException.subclass('UnBoundPort')
 CastToLeafFailure = PurpleException.subclass('CastToLeafFailure')
 GuardFailed = PurpleException.subclass('GuardFailed')
+NonDeterministicLeafChange = PurpleException.subclass('NonDeterministicLeafChange')
 
 
 ComponentName = tuple[str]  ## FIXME
@@ -386,6 +387,19 @@ class LeafStateChange:
         self.require_equal(v_check, v_current)
         self.update_model_state_hash(v_current, v_to)
         self.component._dp_raw_setattr(self.leaf_name, v_to)
+
+    def merge_in_rule(self, previous_update):
+        # a rule has changed the same leaf twice, changes accumulate
+        if previous_update is not None:
+            self.value_before = previous_update.value_before
+
+    def merge_concurrent_rules(self, parallel_update):
+        # two concurrent (clocked) rules have changed the same leaf twice
+        # changes are only allowed if the end result is the same for either
+        # order of execution
+        name = '.'.join(self.component.name) + '.' + self.leaf_name
+        NonDeterministicLeafChange.insist(False,
+            f'leaf {name} does not support modification from concurrent rules')
 
     def apply(self, check_value = UniqueObject):
         self.make_change(self.value_before, self.value_after, check_value)

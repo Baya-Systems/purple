@@ -25,12 +25,12 @@ FIXME
             num_outstanding -= 1
         only possible for commutative operations eg not for (+1) and (*2)
         possibly things like Tuple[] also have commutative operations eg append an item and modify another item
-        idea how to achieve this
-            only needed for clocked-simulator (but should work for atomic-rule)
-            maybe we need to define a CommutativeOperation base class
-            and store state changes as type-specific subclass objects (when needed) in LeafStateChange
-            then in Clock.event() we would merge commutative ops
-            which means finding them first across multiple invocation objects
+
+        if 2 rules add, then we can go out of range which can cause a Guard (new idea)
+            so we would need to detect this during merging and suppress all rules
+            but if 3 rules add, we could go back in-range
+            now the order of execution becomes a problem
+            so do not detect during merge, only after all merging complete
 
         Model.setattr() calls leaf-changes, which calls it on each element hierarchically
             which calls check-and-cast when it reaches a leaf, which returns a tuple of tuple (owner/name/value)
@@ -41,11 +41,6 @@ FIXME
             there's also some checking of original value, which might be redundant?  important for
                 preventing replay of rule from the wrong state (can hash handle this well enough?)
             invocation has a leaf-state-change class for its own storage (only need one such class)
-
-        let's try to move the leaf-state-change class to common.py.  done and passing
-        now a leaf class (Tuple or a new Counter) can modify this leaf-state-change class
-            for itself alone
-        invocation is going to store one leaf-state-change per leaf as now
 
     add a frozen-Dictionary leaf type basically the same as Tuple
     declaring a state type as Tuple not Tuple[XYZ] fails silently
@@ -198,6 +193,7 @@ from .union import *
 from .array import *
 from .state import *
 from .tuple import *
+from .counter import *
 from .bitvector import *
 from .clock import *
 from .parameterise import *

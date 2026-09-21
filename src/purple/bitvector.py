@@ -180,7 +180,7 @@ class BitVectorValueBase:
         self[:num_bits] = 0
 
 
-class BitVectorTransientValue(BitVectorValueBase, state.MutableEmulatedIntegerBase):
+class BitVectorTransientValue(BitVectorValueBase, state.EmulatedIntegerBase):
     '''unlimited-width Bit-Vector
 
     Bit-Vector values are mutable, unlike normal Python integers, because

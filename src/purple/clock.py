@@ -15,10 +15,10 @@ On elaboration, a new object of type Clock is created which also
 contains the actual client objects (rules) sensitive to the clock
 '''
 
-import inspect
 import annotationlib
+import inspect
 
-from . import rule
+from . import common, rule
 
 
 class Clock:
@@ -91,21 +91,56 @@ class Clock:
         invoke all selected bound rules
             revert system state after each one so they are all concurrent
         re-apply all system state changes
+            merge first to support special leaf types that allow concurrent changes
+            this can cause a guard to fail, in which case all rules touching the
+                leaf must be assumed guarded, and all their updates suppressed
         update next-event time of clock object
         '''
         assert not self.driven_by_another_clock
 
-        successful = []
+        successful = set()
         for r in selected_rules:
             inv = r.invoke(check = True, print_headers = False, show_print = False)
             if not inv.guarded:
                 inv.revert_state()
-                successful.append(inv)
+                successful.add(inv)
+
+        merged_invocation = rule.Invocation(None)
+        merged_state_changes = merged_invocation.state_changes
+        merges_to_check = set()
+        for inv in successful:
+            for update_key,lsc in inv.state_changes.items():
+                concurrent_update = merged_state_changes.get(update_key, None)
+                if concurrent_update is None:
+                    merged_state_changes[update_key] = lsc
+                else:
+                    concurrent_update.merge_concurrent_rules(lsc)
+                    merged_state_changes[update_key] = concurrent_update
+                    merges_to_check.add(update_key)
+
+        unsuccessful = set()
+        for update_key in merges_to_check:
+            try:
+                merged_state_changes[update_key].post_merge_check()
+            except common.GuardFailed:
+                # some merge from multiple concurrent rules caused a guard
+                # so remove all changes from anything that was touched by any
+                # of those rules
+                for inv in successful:
+                    if update_key in inv.state_changes:
+                        unsuccessful.add(inv)
+
+        for inv in unsuccessful:
+            successful.remove(inv)
+            for update_key in inv.state_changes:
+                merged_state_changes.pop(update_key, None)
 
         for inv in successful:
-            inv.apply_state()
-            if show_print:
-                inv.produce_printout(print_headers)
+            merged_invocation.printout += inv.printout
+
+        merged_invocation.apply_state()
+        if show_print:
+            merged_invocation.produce_printout(print_headers)
 
         self.next_event_time_ps += self.period_ps
         self.num_events += 1

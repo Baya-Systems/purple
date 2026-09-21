@@ -15,7 +15,6 @@ from . import common, metaclass
 
 class Leaf(common.PurpleComponent, metaclass = metaclass.PurpleLeafMetaClass):
     _dp_initial_value = common.UnDefined
-    _dp_leaf_state_change_cls = common.LeafStateChange
 
     @classmethod
     def _dp_merge_initial_value(cls, owner_initial_value, base_initial_value):
@@ -54,7 +53,7 @@ class Leaf(common.PurpleComponent, metaclass = metaclass.PurpleLeafMetaClass):
     @classmethod
     def _dp_instance_setattr_leaf_changes(cls, owner, name, current, value):
         cast_value = cls._dp_check_and_cast_including_undef(owner, name, value)
-        return (cls._dp_leaf_state_change_cls(owner, name, cast_value),)
+        return (common.LeafStateChange(owner, name, cast_value),)
 
     @classmethod
     def _dp_transient_setattr(cls, owner, name, value):

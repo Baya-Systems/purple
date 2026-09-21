@@ -39,11 +39,11 @@ class Invocation:
     '''
     def __init__(self, rule):
         self.rule = rule
-        self.top_component = rule.top_component
+        self.top_component = None if rule is None else rule.top_component
         self.exc_type = None
         self.exc_value = None
         self.guarded = False
-        self.state_changes = dict() # (component_name,leaf_name):LeafStateChange
+        self.state_changes = {} # (component_name,leaf_name):LeafStateChange
         self.printout = []
 
     def __enter__(self):
@@ -68,8 +68,7 @@ class Invocation:
         update_key = change.component.name, change.leaf_name
         repeated_update = self.state_changes.get(update_key, None)
         change.apply()
-        if repeated_update is not None:
-            change.value_before = repeated_update.value_before
+        change.merge_in_rule(repeated_update)
         self.state_changes[update_key] = change
 
     def revert_state(self):

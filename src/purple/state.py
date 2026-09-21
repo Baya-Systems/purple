@@ -312,6 +312,41 @@ class EmulatedIntegerBase:
         return self.value.bit_count()
 
     # in-place modifications not supported (x += 1 will work using non-in-place binary op)
+    def inplace_op(self, other, op):
+        return NotImplemented
+
+    def __iadd__(self, other, op = operator.iadd):
+        return self.inplace_op(other, op)
+
+    def __isub__(self, other, op = operator.isub):
+        return self.inplace_op(other, op)
+
+    def __imul__(self, other, op = operator.imul):
+        return self.inplace_op(other, op)
+
+    def __ifloordiv__(self, other, op = operator.ifloordiv):
+        return self.inplace_op(other, op)
+
+    def __imod__(self, other, op = operator.imod):
+        return self.inplace_op(other, op)
+
+    def __ipow__(self, other, op = operator.ipow):
+        return self.inplace_op(other, op)
+
+    def __ilshift__(self, other, op = operator.ilshift):
+        return self.inplace_op(other, op)
+
+    def __irshift__(self, other, op = operator.irshift):
+        return self.inplace_op(other, op)
+
+    def __iand__(self, other, op = operator.iand):
+        return self.inplace_op(other, op)
+
+    def __ixor__(self, other, op = operator.ixor):
+        return self.inplace_op(other, op)
+
+    def __ior__(self, other, op = operator.ior):
+        return self.inplace_op(other, op)
 
 
 class ModuloIntegerValue(EmulatedIntegerBase):
@@ -338,44 +373,3 @@ class ModuloIntegerValue(EmulatedIntegerBase):
 
     def __repr__(self):
         return f'<IntMod({self.modulus}):{self.value}>'
-
-
-class MutableEmulatedIntegerBase(EmulatedIntegerBase):
-    ''' Leaf state types may create objects of a subtype
-
-    purpose is to allow the integer objects to have some different behaviour from normal Python int
-
-    when mutable, eg for BitVector, can only be used for transient objects
-    '''
-    def __iadd__(self, other, op = operator.iadd):
-        return self.inplace_op(other, op)
-
-    def __isub__(self, other, op = operator.isub):
-        return self.inplace_op(other, op)
-
-    def __imul__(self, other, op = operator.imul):
-        return self.inplace_op(other, op)
-
-    def __ifloordiv__(self, other, op = operator.ifloordiv):
-        return self.inplace_op(other, op)
-
-    def __imod__(self, other, op = operator.iadd):
-        return self.inplace_op(other, op)
-
-    def __ipow__(self, other, op = operator.ipow):
-        return self.inplace_op(other, op)
-
-    def __ilshift__(self, other, op = operator.ilshift):
-        return self.inplace_op(other, op)
-
-    def __irshift__(self, other, op = operator.irshift):
-        return self.inplace_op(other, op)
-
-    def __iand__(self, other, op = operator.iand):
-        return self.inplace_op(other, op)
-
-    def __ixor__(self, other, op = operator.ixor):
-        return self.inplace_op(other, op)
-
-    def __ior__(self, other, op = operator.ior):
-        return self.inplace_op(other, op)
