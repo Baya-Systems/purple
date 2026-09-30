@@ -20,9 +20,16 @@ Tests in place
 import random
 
 from purple import (
-    Model, Clock, Counter, Integer, ClockedSimulator, CounterOutOfRange,
-    GuardFailed, NonDeterministicLeafChange
+    Clock,
+    ClockedSimulator,
+    Counter,
+    CounterOutOfRange,
+    GuardFailed,
+    Integer,
+    Model,
+    NonDeterministicLeafChange,
 )
+
 import cli
 
 

@@ -406,3 +406,9 @@ class LeafStateChange:
 
     def revert(self, check_value = UniqueObject):
         self.make_change(self.value_after, self.value_before, check_value)
+
+    def post_merge_check(self):
+        # required if merge-concurrent-rules can crete an illegal value
+        # which is not the case here (merge always fails) and by default
+        # will not be for derived classes
+        pass
