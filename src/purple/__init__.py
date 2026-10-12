@@ -15,34 +15,8 @@ FIXME
         txn_at_completer = txns_at_completer[0][1]
     with 3.13 elaboration is not deterministic; fix this in 3.14
         problem seems to be the order of rules, which can affect randomised simulators
-    state variable type for clocked sim integer where two processes change the value
-        eg num_outstanding: DualProcessCounter[limit]
-        def clocked(self):
-            num_outstanding += 1
-            if num_outstanding == 57: do_stuff()
-        def handled(self):
-            if num_outstanding == 57: do_stuff()
-            num_outstanding -= 1
-        only possible for commutative operations eg not for (+1) and (*2)
-        possibly things like Tuple[] also have commutative operations eg append an item and modify another item
-
-        if 2 rules add, then we can go out of range which can cause a Guard (new idea)
-            so we would need to detect this during merging and suppress all rules
-            but if 3 rules add, we could go back in-range
-            now the order of execution becomes a problem
-            so do not detect during merge, only after all merging complete
-
-        Model.setattr() calls leaf-changes, which calls it on each element hierarchically
-            which calls check-and-cast when it reaches a leaf, which returns a tuple of tuple (owner/name/value)
-            which is summed by Model into one full tuple
-        then Model calls announce-changes, which sends all the changes to the current invocation
-        invocation stores it, does some hash operations, detects repeated changes to same leaf
-            but it doesn't remember the separate changes, only the final value
-            there's also some checking of original value, which might be redundant?  important for
-                preventing replay of rule from the wrong state (can hash handle this well enough?)
-            invocation has a leaf-state-change class for its own storage (only need one such class)
-
     add a frozen-Dictionary leaf type basically the same as Tuple
+    add a GuardedInteger[] which guards instead of errors if outside range
     declaring a state type as Tuple not Tuple[XYZ] fails silently
     start rules
         can there be more than one?  can they have parameters?

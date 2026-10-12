@@ -119,3 +119,7 @@ They may be overriden fully or partially, but partial overrides only work if com
 "current" initial value type.
 
 *Array* initial values may be any Python sequence, for example a list or a generator object.
+
+*Tuple* initial values do not default to UnDefined, but to an empty tuple.
+They can be overridden with any iterable, provided the elements are castable to the
+Tuple's element type.

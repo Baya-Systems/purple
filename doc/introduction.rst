@@ -43,7 +43,7 @@ Summary of Purple Concepts
 * *Leaf*
 
   * leaf classes define single state elements declared within a model or a record class
-  * leaf classes available within Purple:
+  * leaf classes available within Purple include (see leaf-types doc):
 
     * *Boolean*
     * *Enumeration* (generic)
